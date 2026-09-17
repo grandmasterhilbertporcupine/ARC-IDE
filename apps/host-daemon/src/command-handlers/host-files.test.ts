@@ -221,15 +221,20 @@ describe("readHostFileMetadata", () => {
 
   it("uses the same containment checks as disk reads", async () => {
     const repoPath = await initRepo();
-    const outsidePath = path.join(repoPath, "..", "outside-metadata.txt");
+    const outsideRoot = await makeTempDir("bb-host-files-outside-");
+    const outsidePath = path.join(outsideRoot, "metadata.txt");
     const symlinkPath = path.join(repoPath, "outside-link");
     await fs.writeFile(outsidePath, "outside");
-    await fs.symlink(outsidePath, symlinkPath);
+    await fs.symlink(
+      outsideRoot,
+      symlinkPath,
+      process.platform === "win32" ? "junction" : "dir",
+    );
 
     await expect(
       readHostFileMetadata({
         type: "host.file_metadata",
-        path: symlinkPath,
+        path: path.join(symlinkPath, "metadata.txt"),
         rootPath: repoPath,
       }),
     ).rejects.toMatchObject({
@@ -248,7 +253,11 @@ describe("browseHostDirectory", () => {
     await fs.mkdir(path.join(root, "node_modules"));
     await fs.writeFile(path.join(root, "readme.md"), "hi", "utf8");
     await fs.writeFile(path.join(root, "alpha", "deep.txt"), "x", "utf8");
-    await fs.symlink(path.join(root, "alpha"), path.join(root, "link"));
+    await fs.symlink(
+      path.join(root, "alpha"),
+      path.join(root, "link"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
 
     const realRoot = await fs.realpath(root);
     const result = await browseHostDirectory({

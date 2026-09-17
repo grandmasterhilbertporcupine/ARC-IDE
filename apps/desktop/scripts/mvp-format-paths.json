@@ -1,4 +1,6 @@
 [
+  "apps/host-daemon/src/command-handlers/host-files.test.ts",
+  "apps/host-daemon/src/desktop-browser-broker.test.ts",
   ".github/workflows/arc-release.yml",
   ".github/workflows/arc-windows.yml",
   "apps/app/src/components/secondary-panel/ProjectPreviewControls.test.tsx",
