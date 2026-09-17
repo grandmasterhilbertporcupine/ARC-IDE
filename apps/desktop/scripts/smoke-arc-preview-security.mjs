@@ -60,6 +60,7 @@ export async function runPreviewSecuritySmoke(executable, options = {}) {
       };
       const tabs = [];
       let scope;
+      let fixturePluginId;
       const request = async (
         path,
         body,
@@ -192,16 +193,26 @@ export async function runPreviewSecuritySmoke(executable, options = {}) {
           await stale.body?.cancel();
           record("server restart invalidated the previous file lease");
         }
-        const thread = await request("/threads", {
+        const preparationRequest = {
+          operationId: `preview-security-${saved.token}-${pass}`,
           projectId: saved.project.id,
-          origin: "sdk",
-          providerId: "codex",
-          model: "gpt-6-astra",
+          parentThreadId: null,
+          executionContextId: `preview-security-${saved.token}-${pass}`,
           title: `Preview security fixture ${pass + 1}`,
+          visibility: "visible",
+          turnPolicy: "single",
+          execution: {
+            providerId: "codex",
+            model: "gpt-6-astra",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+            permissionMode: "accept-edits",
+          },
           input: [
             {
               type: "text",
-              text: "Deferred fixture; cancel before any provider dispatch.",
+              text: "Owned Preview isolation fixture; prepare the workspace without starting a provider turn.",
+              mentions: [],
             },
           ],
           environment: {
@@ -209,18 +220,82 @@ export async function runPreviewSecuritySmoke(executable, options = {}) {
             hostId: daemon.hostId,
             workspace: { type: "unmanaged", path: saved.workspace },
           },
-          sendAt: Date.now() + 86_400_000,
+        };
+        const fixturePluginRoot = requireWithin(
+          root,
+          join(root, `preview-security-plugin-${pass}`),
+        );
+        await mkdir(fixturePluginRoot);
+        await writeFile(
+          join(fixturePluginRoot, "package.json"),
+          JSON.stringify({
+            name: `bb-plugin-arc-preview-security-fixture-${pass}`,
+            version: "0.1.0",
+            type: "module",
+            bb: {
+              name: "ARC Preview security fixture",
+              description:
+                "Owned native Preview verification workspace preparation.",
+              branding: { icon: "EditFile" },
+              server: "./server.js",
+            },
+          }),
+        );
+        await writeFile(
+          join(fixturePluginRoot, "server.js"),
+          `const request = ${JSON.stringify(preparationRequest)};
+export default function plugin(bb) {
+  bb.http.route("POST", "/prepare", async (context) => context.json(await bb.experimental_threads.prepare(request)), { auth: "local" });
+  bb.http.route("GET", "/preparation", async (context) => context.json(await bb.experimental_threads.getPreparation({ operationId: request.operationId })), { auth: "local" });
+}
+`,
+        );
+        const installed = await request("/plugins/install", {
+          source: `path:${fixturePluginRoot}`,
+          selection: { kind: "root" },
         });
-        const queued = await request(`/threads/${thread.id}/queued-messages`);
-        assert.equal(queued.length, 1);
-        await request(
-          `/threads/${thread.id}/queued-messages/${queued[0].id}`,
-          undefined,
-          "DELETE",
+        assert.equal(
+          installed.plugin.id,
+          `arc-preview-security-fixture-${pass}`,
+        );
+        fixturePluginId = installed.plugin.id;
+        const preparationPath = `/plugins/${fixturePluginId}/http`;
+        const initialPreparation = await request(
+          `${preparationPath}/prepare`,
+          {},
+        );
+        assert.equal(initialPreparation.dispatch, null);
+        const preparation = await until(
+          "prepared Preview fixture workspace",
+          async () => {
+            const value = await request(`${preparationPath}/preparation`);
+            evidence.preparation = value;
+            assert(value, "Preview fixture preparation disappeared");
+            assert.equal(value.dispatch, null, JSON.stringify(value));
+            assert(
+              ["reserved", "provisioning", "prepared"].includes(value.state),
+              `Preview fixture preparation failed: ${JSON.stringify(value)}`,
+            );
+            return value.state === "prepared" ? value : null;
+          },
+        );
+        assert.equal(preparation.threadId, initialPreparation.threadId);
+        assert.equal(preparation.environment.hostId, daemon.hostId);
+        assert.equal(
+          resolve(preparation.environment.path),
+          resolve(saved.workspace),
+        );
+        const thread = await request(`/threads/${preparation.threadId}`);
+        assert.equal(
+          thread.environmentId,
+          preparation.environment.environmentId,
         );
         assert.equal(
           (await request(`/threads/${thread.id}/queued-messages`)).length,
           0,
+        );
+        record(
+          "real thread workspace prepared and attached without provider dispatch",
         );
         const instances = await request("/desktop-browsers/instances", {
           hostId: daemon.hostId,
@@ -310,17 +385,24 @@ export async function runPreviewSecuritySmoke(executable, options = {}) {
         );
         const boundary = async (url, name, initialUrl = url) => {
           const response = await fetch(url);
-          assert.equal(response.status, 200);
+          const responseBody = await response.text();
+          assert.equal(
+            response.status,
+            200,
+            `${name}: ${url}: HTTP ${response.status}: ${responseBody.slice(0, 1_200)}`,
+          );
           assertSandbox(response.headers);
           const etag = response.headers.get("etag");
-          await response.body?.cancel();
           if (etag) {
             const cached = await fetch(url, {
               headers: { "If-None-Match": etag },
             });
-            assert([200, 304].includes(cached.status));
+            const cachedBody = await cached.text();
+            assert(
+              [200, 304].includes(cached.status),
+              `${name} conditional request: HTTP ${cached.status}: ${cachedBody.slice(0, 1_200)}`,
+            );
             assertSandbox(cached.headers);
-            await cached.body?.cancel();
           }
           await open(initialUrl);
           const proof = await until(name, () =>
@@ -463,6 +545,11 @@ export async function runPreviewSecuritySmoke(executable, options = {}) {
           )
         ).length;
         assert.equal(evidence.modelTurnsAdmitted, 0);
+        const retainedPreparation = await request(
+          `${preparationPath}/preparation`,
+        );
+        assert.equal(retainedPreparation.state, "prepared");
+        assert.equal(retainedPreparation.dispatch, null);
         assert.equal(await readFile(outside, "utf8"), sentinel);
         record(
           "API and renewal remain privileged; live asset renewal/reload works with zero provider turns",
@@ -481,12 +568,19 @@ export async function runPreviewSecuritySmoke(executable, options = {}) {
             evidence.cleanupErrors.push(String(error));
           }
         }
+        if (fixturePluginId) {
+          try {
+            await request(`/plugins/${fixturePluginId}`, undefined, "DELETE");
+          } catch (error) {
+            evidence.cleanupErrors.push(String(error));
+          }
+        }
         if (evidence.cleanupErrors.length) evidence.status = "failed";
         await writeFile(artifact, `${JSON.stringify(evidence, null, 2)}\n`);
         assert.equal(
           evidence.cleanupErrors.length,
           0,
-          "Native fixture tabs did not close",
+          "Native fixture tabs or preparation plugin did not clean up",
         );
       }
       return evidence;
