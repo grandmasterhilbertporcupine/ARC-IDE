@@ -26,13 +26,13 @@ jobs:
       MAX_JOBS: "1"
       TURBO_TELEMETRY_DISABLED: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24.14.0"
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
       - name: Validate release version
@@ -57,7 +57,7 @@ jobs:
         run: pnpm run release:assets
       - name: Retain verification evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ARC-personal-release-evidence
           path: |
@@ -70,7 +70,7 @@ jobs:
             apps/desktop/.turbo/*.log
           include-hidden-files: true
           if-no-files-found: warn
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ARC-personal-release-assets
           path: |
