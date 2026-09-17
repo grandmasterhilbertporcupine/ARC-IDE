@@ -1,0 +1,5 @@
+ARC builds on the local WNDR fork of BB (https://github.com/get-bb/bb).
+Upstream base: 06aeaa994942ae7527dc49d2268c1f801e8542a0, version 0.42.1.
+BB is distributed under the MIT license. See BB-LICENSE.txt.
+ARC retains the Windows foundation, removes WNDR forecasting, and adds its own identity and agent orchestration experience.
+Provider products, names and billing remain owned by their respective providers.

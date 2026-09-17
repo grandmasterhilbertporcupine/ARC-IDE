@@ -1,0 +1,150 @@
+:where(.arc-team-canvas) {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+:where(.arc-team-canvas) .react-flow {
+  --xy-background-color: var(--background);
+  --xy-background-pattern-dots-color: var(--border);
+  --xy-edge-stroke: var(--muted-foreground);
+  --xy-edge-stroke-width: 1.5;
+  --xy-edge-stroke-selected: var(--ring);
+  --xy-connectionline-stroke: var(--ring);
+  --xy-connectionline-stroke-width: 1.5;
+  --xy-handle-background-color: var(--foreground);
+  --xy-handle-border-color: var(--background);
+  --xy-attribution-background-color: var(--background);
+  --xy-selection-background-color: color-mix(
+    in oklab,
+    var(--ring) 12%,
+    transparent
+  );
+  --xy-selection-border: 1px solid var(--ring);
+}
+
+:where(.arc-team-canvas) .arc-team-stage {
+  border: 1px solid var(--arc-team-color);
+  border-top-width: 3px;
+  border-radius: 8px;
+  background: var(--surface-raised-solid);
+  color: var(--foreground);
+}
+
+:where(.arc-team-canvas) .arc-team-stage-content {
+  padding: 12px 14px;
+  min-height: 96px;
+}
+
+:where(.arc-team-canvas) .arc-team-stage-label {
+  margin: 5px 0;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+
+:where(.arc-team-canvas) .arc-team-stage-outputs {
+  display: flex;
+  border-top: 1px solid var(--border);
+  padding: 7px 0 8px;
+}
+
+:where(.arc-team-canvas) .arc-team-stage-output {
+  flex: 1;
+  text-align: center;
+}
+
+:where(.arc-team-canvas) .react-flow__handle {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--background);
+  background: var(--foreground);
+}
+
+:where(.arc-team-canvas) .react-flow__handle.connectingfrom {
+  background: var(--ring);
+  outline: 3px solid color-mix(in oklab, var(--ring) 35%, transparent);
+}
+
+:where(.arc-team-canvas) .arc-team-group {
+  width: 100%;
+  height: 100%;
+  border: 1px solid color-mix(in oklab, var(--arc-team-color) 60%, transparent);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--arc-team-color) 4%, transparent);
+}
+
+:where(.arc-team-canvas) .arc-team-group-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: grab;
+}
+
+:where(.arc-team-canvas) [data-selected="true"] {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+
+:where(.arc-team-canvas) .react-flow__node:focus-visible,
+:where(.arc-team-canvas) .react-flow__edge:focus-visible,
+:where(.arc-team-canvas) .react-flow__handle:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 4px;
+}
+
+:where(.arc-team-canvas) .react-flow__controls {
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-raised-solid);
+  box-shadow: none;
+}
+
+:where(.arc-team-canvas) .react-flow__controls-button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  color: var(--foreground);
+  background: transparent;
+  cursor: pointer;
+}
+
+:where(.arc-team-canvas) .react-flow__controls-button svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+
+:where(.arc-team-canvas) .react-flow__controls-button:hover {
+  background: var(--state-hover);
+}
+
+:where(.arc-team-canvas) .react-flow__controls-button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -3px;
+}
+
+:where(.arc-team-canvas) .react-flow__controls-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+:where(.arc-team-canvas) .react-flow__attribution a {
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs);
+}
+
+:where(.arc-team-canvas) .arc-team-canvas-help {
+  max-width: min(360px, calc(100% - 32px));
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--background);
+  pointer-events: none;
+}

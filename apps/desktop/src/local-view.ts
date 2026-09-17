@@ -1,0 +1,237 @@
+import { stripVTControlCharacters } from "node:util";
+import { escapeHtmlText } from "@bb/domain";
+import { BB_DESKTOP_TITLE_BAR_HEIGHT } from "@bb/desktop-contract";
+
+export type LocalViewModel =
+  | InfoViewModel
+  | LoadingViewModel
+  | StartupErrorViewModel;
+
+interface LoadingViewModel {
+  kind: "loading";
+  message: string;
+  title: string;
+}
+
+interface InfoViewModel {
+  kind: "info";
+  message: string;
+  title: string;
+}
+
+interface StartupErrorViewModel {
+  details: string;
+  kind: "error";
+  logText: string;
+  title: string;
+}
+
+interface CreateLocalViewUrlArgs {
+  viewModel: LocalViewModel;
+  titleBar: { logoDataUrl: string } | null;
+}
+
+function formatPlainLogText(value: string): string {
+  return stripVTControlCharacters(value).replace(/\r\n?/gu, "\n");
+}
+
+function renderLoadingView(viewModel: LoadingViewModel): string {
+  return `
+    <main class="shell">
+      <div class="spinner"></div>
+      <h1>${escapeHtmlText(viewModel.title)}</h1>
+      <p>${escapeHtmlText(viewModel.message)}</p>
+    </main>
+  `;
+}
+
+function renderInfoView(viewModel: InfoViewModel): string {
+  return `
+    <main class="shell">
+      <h1>${escapeHtmlText(viewModel.title)}</h1>
+      <p>${escapeHtmlText(viewModel.message)}</p>
+    </main>
+  `;
+}
+
+function renderErrorView(viewModel: StartupErrorViewModel): string {
+  const logText = formatPlainLogText(viewModel.logText);
+  const logs =
+    logText.trim().length > 0 ? `<pre>${escapeHtmlText(logText)}</pre>` : "";
+  return `
+    <main class="shell shell-error">
+      <h1>${escapeHtmlText(viewModel.title)}</h1>
+      <p>${escapeHtmlText(viewModel.details)}</p>
+      ${logs}
+    </main>
+  `;
+}
+
+function renderLocalView({
+  viewModel,
+  titleBar,
+}: CreateLocalViewUrlArgs): string {
+  const overlayHeight = `calc(env(titlebar-area-y, 0px) + env(titlebar-area-height, ${BB_DESKTOP_TITLE_BAR_HEIGHT}px))`;
+  let body: string;
+  if (viewModel.kind === "loading") {
+    body = renderLoadingView(viewModel);
+  } else if (viewModel.kind === "info") {
+    body = renderInfoView(viewModel);
+  } else {
+    body = renderErrorView(viewModel);
+  }
+  return `<!doctype html>
+<html data-bb-local-view>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ARC</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      align-items: center;
+      background: Canvas;
+      color: CanvasText;
+      display: flex;
+      height: 100vh;
+      justify-content: center;
+      margin: 0;
+      box-sizing: border-box;
+      padding-top: ${titleBar === null ? "0px" : overlayHeight};
+    }
+
+    .titlebar-drag-region {
+      app-region: drag;
+      -webkit-app-region: drag;
+      background: transparent;
+      border: 0;
+      height: ${titleBar === null ? "28px" : overlayHeight};
+      left: 0;
+      position: fixed;
+      right: 0;
+      top: 0;
+      user-select: none;
+      z-index: 10;
+    }
+
+    .titlebar-brand {
+      align-items: center;
+      display: flex;
+      gap: 8px;
+      height: 100%;
+      padding-left: 16px;
+      box-sizing: border-box;
+      width: env(titlebar-area-width, calc(100% - 138px));
+      font-size: 12px;
+      font-weight: 600;
+      overflow: hidden;
+    }
+
+    .titlebar-brand img {
+      width: 16px;
+      height: 16px;
+      object-fit: contain;
+    }
+
+    ${
+      titleBar === null
+        ? ""
+        : `html[data-bb-desktop-fullscreen="true"] .titlebar-drag-region {
+      display: none;
+    }
+    html[data-bb-desktop-fullscreen="true"] body {
+      padding-top: 0;
+    }
+    @media (display-mode: fullscreen) {
+      .titlebar-drag-region {
+        display: none;
+      }
+      body {
+        padding-top: 0;
+      }
+    }`
+    }
+
+    button,
+    a,
+    input,
+    textarea,
+    select,
+    summary,
+    pre {
+      app-region: no-drag;
+      -webkit-app-region: no-drag;
+    }
+
+    .shell {
+      max-width: 680px;
+      padding: 32px;
+      text-align: center;
+    }
+
+    .shell-error {
+      text-align: left;
+    }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: 0;
+      line-height: 1.25;
+      margin: 16px 0 8px;
+    }
+
+    p {
+      color: color-mix(in srgb, CanvasText 74%, transparent);
+      font-size: 14px;
+      line-height: 1.5;
+      margin: 0;
+    }
+
+    pre {
+      background: color-mix(in srgb, CanvasText 8%, transparent);
+      border-radius: 6px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      line-height: 1.45;
+      margin: 18px 0 0;
+      max-height: 260px;
+      overflow: auto;
+      padding: 12px;
+      white-space: pre-wrap;
+    }
+
+    .spinner {
+      animation: spin 0.9s linear infinite;
+      border: 2px solid color-mix(in srgb, CanvasText 16%, transparent);
+      border-top-color: CanvasText;
+      border-radius: 999px;
+      height: 24px;
+      margin: 0 auto;
+      width: 24px;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="titlebar-drag-region" data-testid="bb-local-view-window-drag-region" aria-hidden="true">${titleBar === null ? "" : `<div class="titlebar-brand"><img src="${escapeHtmlText(titleBar.logoDataUrl)}" alt=""><span>ARC</span></div>`}</div>
+${body}
+</body>
+</html>`;
+}
+
+export function createLocalViewUrl(args: CreateLocalViewUrlArgs): string {
+  return `data:text/html;charset=utf-8,${encodeURIComponent(
+    renderLocalView(args),
+  )}`;
+}

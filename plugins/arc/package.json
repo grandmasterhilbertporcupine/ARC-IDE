@@ -1,0 +1,48 @@
+{
+  "name": "bb-plugin-arc",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "ARC agent and team definitions, live workspaces, and durable runs.",
+  "bb": {
+    "name": "ARC",
+    "description": "Build coding agents and teams, and follow their work.",
+    "branding": {
+      "logo": {
+        "light": "./assets/logo.png"
+      }
+    },
+    "server": "./server.ts",
+    "host": "./host.ts",
+    "app": "./app.tsx",
+    "skills": [
+      "skills"
+    ]
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "gray-matter": "^4.0.3",
+    "@bb/shared-ui": "workspace:*",
+    "@xyflow/react": "12.11.6",
+    "bb-plugin-workflows": "workspace:*",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@testing-library/react": "^16.3.2",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "better-sqlite3": "12.10.0",
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-7": "npm:typescript@^7.0.2",
+    "vitest": "^4.1.1"
+  }
+}

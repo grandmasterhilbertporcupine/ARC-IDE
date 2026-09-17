@@ -1,0 +1,145 @@
+name: ARC Stable Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arc-stable-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.repository == 'grandmasterhilbertporcupine/ARC-IDE' && (github.event_name == 'push' || github.ref == 'refs/heads/main')
+    runs-on: windows-2022
+    timeout-minutes: 90
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      BB_DESKTOP_RELEASE_CHANNEL: latest
+      TURBO_CONCURRENCY: "1"
+      NODE_OPTIONS: --max-old-space-size=4096
+      UV_THREADPOOL_SIZE: "2"
+      TURBO_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.14.0"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - name: Validate release version
+        id: version
+        shell: pwsh
+        run: |
+          node .github/workflows/check-version-lockstep.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $version = (Get-Content apps/desktop/package.json | ConvertFrom-Json).version
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Stable release requires a stable version.' }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") { throw 'Tag and package version must agree.' }
+          "version=$version" >> $env:GITHUB_OUTPUT
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck desktop and verify updater and installer behavior
+        shell: pwsh
+        run: |
+          pnpm exec turbo run typecheck --filter=@bb/desktop --filter=@bb/app --filter=@bb/desktop-contract --concurrency=1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm exec turbo run test --filter=@bb/desktop --filter=@bb/desktop-contract --concurrency=1 -- test/desktop-update-provider.test.ts test/desktop-update-check.test.ts test/desktop-auto-update.test.ts test/desktop-update-info.test.ts test/electron-builder-config.test.ts test/smoke-arc-installer.test.ts test/github-release.test.ts test/info.test.ts --maxWorkers=1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm exec turbo run test --filter=@bb/app --concurrency=1 -- src/components/settings/UpdatesSettingsSection.test.tsx --maxWorkers=1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build installer and verify release assets
+        shell: pwsh
+        run: |
+          pnpm exec turbo run dist:windows --filter=@bb/desktop --concurrency=1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm exec turbo run release:assets --filter=@bb/desktop --concurrency=1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify packaged runtime and installer lifecycle
+        shell: pwsh
+        run: |
+          $env:TEMP = $env:RUNNER_TEMP
+          $env:TMP = $env:RUNNER_TEMP
+          pnpm exec turbo run smoke:windows --filter=@bb/desktop --concurrency=1 | Tee-Object "$env:RUNNER_TEMP/arc-packaged-smoke.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm exec turbo run smoke:installer --filter=@bb/desktop --concurrency=1 | Tee-Object "$env:RUNNER_TEMP/arc-installer-smoke.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Retain verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARC-release-evidence
+          path: |
+            ${{ runner.temp }}/arc-*-smoke.log
+            ${{ runner.temp }}/ARC packaged smoke*/result.json
+            .arc-verification/NSIS install */result.json
+            .arc-verification/NSIS install */baseline-application-result.json
+            .arc-verification/NSIS install */next-application-result.json
+            apps/desktop/.turbo/*.log
+          include-hidden-files: true
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ARC-release-assets
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/latest.yml
+            apps/desktop/release/desktop-version-windows.json
+            apps/desktop/release/*.sha256
+            apps/desktop/release/*.install.txt
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ARC_RELEASE_VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ARC-release-assets
+          path: release
+      - name: Publish complete stable release
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v${ARC_RELEASE_VERSION}"
+          git ls-remote --tags origin "refs/tags/$tag" > existing-tag.txt
+          if test -s existing-tag.txt; then
+            git fetch --no-tags origin "refs/tags/$tag"
+            if test "$(git rev-parse 'FETCH_HEAD^{commit}')" != "$GITHUB_SHA"; then
+              echo 'The existing release tag points to different source. Refusing to publish.' >&2
+              exit 1
+            fi
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo 'This release already exists. Bump the version; published assets are immutable.' >&2
+            exit 1
+          fi
+          name="ARC-${ARC_RELEASE_VERSION}-x64"
+          assets=("release/$name.exe" "release/$name.exe.blockmap" "release/latest.yml" "release/desktop-version-windows.json" "release/$name.exe.sha256" "release/$name.install.txt")
+          for asset in "${assets[@]}"; do test -s "$asset"; done
+          (cd release && sha256sum --check "$name.exe.sha256")
+          printf 'ARC %s for Windows x64\n\n' "$ARC_RELEASE_VERSION" > release-notes.md
+          cat >> release-notes.md <<'NOTES'
+          Install the attached executable. Node and Context assets are bundled; Git and provider setup remain external prerequisites.
+
+          This is an unsigned personal build. Stable GitHub updates download in the background and install on restart or quit. Earlier local builds need a one-time manual install.
+
+          This workflow passed focused desktop/update tests, typecheck, packaged runtime smoke, and guarded same-version install/reinstall/uninstall on Windows Server 2022. This does not certify Windows 11 physical hardware, authenticated provider workflows, signing, or cross-version migration.
+          NOTES
+          gh release create "$tag" "${assets[@]}" --target "$GITHUB_SHA" --title "ARC $ARC_RELEASE_VERSION" --notes-file release-notes.md --draft
+          gh release edit "$tag" --draft=false --latest

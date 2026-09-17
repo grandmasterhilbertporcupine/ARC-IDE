@@ -1,0 +1,94 @@
+{
+  "appId": "dev.arc.desktop",
+  "productName": "ARC",
+  "artifactName": "${productName}-${version}-${arch}.${ext}",
+  "toolsets": {
+    "appimage": "1.0.3"
+  },
+  "afterPack": "scripts/prepare-native-modules.cjs",
+  "asar": true,
+  "asarUnpack": ["dist/bb-app-bridge.mjs", "node_modules/**"],
+  "directories": {
+    "buildResources": "assets",
+    "output": "release"
+  },
+  "files": [
+    "assets/**",
+    "dist/**",
+    "node_modules/**",
+    "package.json",
+    "!assets/installer{,/**/*}",
+    "!assets/installer.nsh",
+    "!node_modules/bb-app/host-daemon/dist/context{,/**/*}",
+    "!**/*.map",
+    {
+      "from": "node_modules/bb-app/server/dist/app-scaffold-template",
+      "to": "node_modules/bb-app/server/dist/app-scaffold-template",
+      "filter": ["**/*"]
+    }
+  ],
+  "extraResources": [
+    {
+      "from": "node_modules/bb-app/host-daemon/dist",
+      "to": "app.asar.unpacked/node_modules/bb-app/host-daemon/dist",
+      "filter": ["context/**/*"]
+    }
+  ],
+  "publish": [],
+  "win": {
+    "icon": "assets/arc-icon.ico",
+    "executableName": "ARC IDE",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "signAndEditExecutable": true
+  },
+  "nsis": {
+    "include": "assets/installer.nsh",
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false,
+    "createDesktopShortcut": true,
+    "shortcutName": "ARC IDE",
+    "uninstallDisplayName": "ARC IDE"
+  },
+  "mac": {
+    "category": "public.app-category.developer-tools",
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+    "gatekeeperAssess": false,
+    "hardenedRuntime": true,
+    "icon": "assets/arc-icon.icns",
+    "identity": null,
+    "notarize": false,
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["arm64"]
+      },
+      {
+        "target": "zip",
+        "arch": ["arm64"]
+      }
+    ]
+  },
+  "linux": {
+    "category": "Development",
+    "executableName": "arc",
+    "icon": "assets/arc-icon.png",
+    "target": [
+      {
+        "target": "AppImage",
+        "arch": ["x64"]
+      }
+    ]
+  },
+  "dmg": {
+    "sign": false
+  },
+  "npmRebuild": false
+}

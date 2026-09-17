@@ -1,0 +1,75 @@
+:root {
+  --arc-motion-fast: 110ms;
+  --arc-motion-enter: 160ms;
+  --arc-motion-exit: 100ms;
+  --arc-motion-panel: 180ms;
+  --arc-motion-ease: cubic-bezier(0.2, 0, 0, 1);
+  --arc-motion-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+}
+
+:where(.arc-overlay-motion) {
+  animation-duration: var(--arc-motion-enter);
+  animation-timing-function: var(--arc-motion-ease);
+}
+
+:where(.arc-popover-motion) {
+  --tw-enter-scale: 0.985;
+  --tw-exit-scale: 0.99;
+}
+
+:where(
+  .arc-overlay-motion[data-state="closed"],
+  .arc-overlay-motion[data-state="hidden"]
+) {
+  animation-duration: var(--arc-motion-exit);
+  animation-timing-function: var(--arc-motion-ease-exit);
+}
+
+:where(.arc-backdrop-motion) {
+  animation-duration: var(--arc-motion-fast);
+}
+
+:where(.arc-tab-motion[data-state="active"]) {
+  animation: arc-content-enter var(--arc-motion-enter) var(--arc-motion-ease);
+}
+
+:where(.bb-app-shell) [data-sonner-toaster] [data-sonner-toast] {
+  transition-duration: var(--arc-motion-panel);
+  transition-timing-function: var(--arc-motion-ease);
+}
+
+@keyframes arc-content-enter {
+  from {
+    opacity: 0.75;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --arc-motion-fast: 0ms;
+    --arc-motion-enter: 0ms;
+    --arc-motion-exit: 0ms;
+    --arc-motion-panel: 0ms;
+  }
+
+  :where(.bb-app-shell, .bb-app-shell *) {
+    scroll-behavior: auto !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  :where(.bb-app-shell *)::before,
+  :where(.bb-app-shell *)::after {
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+  }
+}

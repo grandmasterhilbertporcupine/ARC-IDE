@@ -1,0 +1,27 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`retained Git compiler byte compatibility > preserves deterministic V1, V2 and V3 compiled bytes 1`] = `
+[
+  {
+    "compiledBytes": "aa4541e9bd5666ff5f4dbf563d13697080771618dbe5941a2f74a158289a452d",
+    "definitionBytes": "c3f8820e9886d701b22baaeaca4fc7818034d69baa67bac16a2cadf78d55484e",
+    "planHash": "4868be48e03e771ab10267254f187ad48fe238c35c83235b58c36bf98f269c09",
+    "sourceBytes": "5ef6dccbb90d115b8af4f1fed0d76658b18efc373d83799cf7e73735b474a53c",
+    "version": 1,
+  },
+  {
+    "compiledBytes": "0efd6d3d298fa63c7a651a32456115fbd2dcb10e8abd7898e757b4f6271f8e60",
+    "definitionBytes": "0273fd4d810f888df9c7dc01ce079d0755489a9d8b92b6a48eca008440956ef9",
+    "planHash": "feb6a17ab9c03b510959be2532c298ab74085452039c268b90a99614450d13ec",
+    "sourceBytes": "7245e4123cdc1eba6fa5ac845269922fceb3b0308d1e216f420dcab330902924",
+    "version": 2,
+  },
+  {
+    "compiledBytes": "88ab879ab19e2f8f793866bb900d2ae1a3c0f0a2868722b4986a1dd7048ec877",
+    "definitionBytes": "93872a4f49d72b0a359bfc372e7c0305956ee72befaa4a638bd4036e8470ee57",
+    "planHash": "da9a8b139b9209547baf24028d23acc8dc771e4cb94cc9fcee352fc55fc58404",
+    "sourceBytes": "7ee88ab69c42afa448a745eaeb3274e551e923477532c4efe88a0458f9907eff",
+    "version": 3,
+  },
+]
+`;

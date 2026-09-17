@@ -1,0 +1,1 @@
+ALTER TABLE `threads` ADD `execution_context_id` text;

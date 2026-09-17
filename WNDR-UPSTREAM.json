@@ -1,0 +1,9 @@
+{
+  "project": "WNDR",
+  "upstream": "https://github.com/get-bb/bb.git",
+  "commit": "06aeaa994942ae7527dc49d2268c1f801e8542a0",
+  "upstreamVersion": "0.42.1",
+  "forkedAt": "2026-09-06",
+  "license": "MIT",
+  "compatibility": "Native Windows compatibility changes are maintained alongside the bundled wndr-forecast product plugin. Upstream notices are retained."
+}

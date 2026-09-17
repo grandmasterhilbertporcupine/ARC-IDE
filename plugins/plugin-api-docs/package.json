@@ -1,0 +1,37 @@
+{
+  "name": "bb-plugin-plugin-api-docs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Browse the ARC plugin API as an annotated map of the product.",
+  "engines": {
+    "bb": ">=0.0",
+    "bbPluginSdk": ">=0.4.3"
+  },
+  "bb": {
+    "name": "Plugin Guide",
+    "description": "Browse the ARC plugin API as an annotated map of the product.",
+    "branding": {
+      "icon": "./icons/ai-generative.svg"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx",
+    "skills": []
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bb/plugin-api-map": "workspace:*"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-7": "npm:typescript@^7.0.2"
+  }
+}

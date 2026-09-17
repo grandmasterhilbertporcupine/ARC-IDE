@@ -1,0 +1,312 @@
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  probeBbServer,
+  waitForCompatibleServer,
+  type ServerProbeFetch,
+} from "../src/server-probe.js";
+
+interface TestServer {
+  close(): Promise<void>;
+  url: string;
+}
+
+interface StartTestServerArgs {
+  handler(request: IncomingMessage, response: ServerResponse): void;
+}
+
+const testServers: TestServer[] = [];
+
+function writeJson(
+  response: ServerResponse,
+  status: number,
+  body: string,
+): void {
+  response.writeHead(status, {
+    "content-type": "application/json",
+  });
+  response.end(body);
+}
+
+async function startTestServer(args: StartTestServerArgs): Promise<TestServer> {
+  const server = createServer(args.handler);
+  await new Promise<void>((resolvePromise) => {
+    server.listen(0, "127.0.0.1", resolvePromise);
+  });
+  const address = server.address();
+  if (address === null || typeof address === "string") {
+    throw new Error("Expected test server to listen on a TCP port");
+  }
+  const testServer: TestServer = {
+    close: async () => {
+      await new Promise<void>((resolvePromise, rejectPromise) => {
+        server.close((error) => {
+          if (error) {
+            rejectPromise(error);
+            return;
+          }
+          resolvePromise();
+        });
+      });
+    },
+    url: `http://127.0.0.1:${address.port}`,
+  };
+  testServers.push(testServer);
+  return testServer;
+}
+
+afterEach(async () => {
+  while (testServers.length > 0) {
+    const testServer = testServers.pop();
+    if (testServer !== undefined) {
+      await testServer.close();
+    }
+  }
+});
+
+describe("probeBbServer", () => {
+  it("uses the provided authenticated fetch implementation", async () => {
+    const fetchImpl = vi
+      .fn<ServerProbeFetch>()
+      .mockResolvedValueOnce(Response.json({ ok: true }))
+      .mockResolvedValueOnce(
+        Response.json({
+          hostDaemonPort: 4_242,
+          voiceTranscriptionEnabled: false,
+        }),
+      );
+
+    await expect(
+      probeBbServer({
+        fetchImpl,
+        serverUrl: "https://studio.example",
+        timeoutMs: 1_000,
+      }),
+    ).resolves.toEqual({
+      dataDir: null,
+      kind: "compatible",
+      serverUrl: "https://studio.example",
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("accepts a server with bb health and system config endpoints", async () => {
+    const testServer = await startTestServer({
+      handler(request, response) {
+        if (request.url === "/health") {
+          writeJson(response, 200, JSON.stringify({ ok: true }));
+          return;
+        }
+        if (request.url === "/api/v1/system/config") {
+          writeJson(
+            response,
+            200,
+            JSON.stringify({
+              hostDaemonPort: 38887,
+              primaryHostPlatform: null,
+              voiceTranscriptionEnabled: false,
+            }),
+          );
+          return;
+        }
+        writeJson(response, 404, JSON.stringify({ message: "not found" }));
+      },
+    });
+
+    await expect(
+      probeBbServer({ serverUrl: testServer.url, timeoutMs: 500 }),
+    ).resolves.toEqual({
+      dataDir: null,
+      kind: "compatible",
+      serverUrl: testServer.url,
+    });
+  });
+
+  it("reports the data directory the probed server declares", async () => {
+    const fetchImpl = vi
+      .fn<ServerProbeFetch>()
+      .mockResolvedValueOnce(Response.json({ ok: true }))
+      .mockResolvedValueOnce(
+        Response.json({
+          dataDir: "/Users/example/.bb",
+          hostDaemonPort: 4_242,
+          voiceTranscriptionEnabled: false,
+        }),
+      );
+
+    await expect(
+      probeBbServer({
+        fetchImpl,
+        serverUrl: "https://studio.example",
+        timeoutMs: 1_000,
+      }),
+    ).resolves.toEqual({
+      dataDir: "/Users/example/.bb",
+      kind: "compatible",
+      serverUrl: "https://studio.example",
+    });
+  });
+
+  it("rejects a health-only service as incompatible", async () => {
+    const testServer = await startTestServer({
+      handler(request, response) {
+        if (request.url === "/health") {
+          writeJson(response, 200, JSON.stringify({ ok: true }));
+          return;
+        }
+        writeJson(response, 404, JSON.stringify({ message: "not found" }));
+      },
+    });
+
+    const result = await probeBbServer({
+      serverUrl: testServer.url,
+      timeoutMs: 500,
+    });
+
+    expect(result.kind).toBe("incompatible");
+  });
+
+  it("does not depend on the production version endpoint for startup compatibility", async () => {
+    let versionRequestCount = 0;
+    const testServer = await startTestServer({
+      handler(request, response) {
+        if (request.url === "/health") {
+          writeJson(response, 200, JSON.stringify({ ok: true }));
+          return;
+        }
+        if (request.url === "/api/v1/system/config") {
+          writeJson(
+            response,
+            200,
+            JSON.stringify({
+              hostDaemonPort: 38887,
+              primaryHostPlatform: null,
+              voiceTranscriptionEnabled: false,
+            }),
+          );
+          return;
+        }
+        if (request.url === "/api/v1/system/version") {
+          versionRequestCount += 1;
+          writeJson(response, 500, JSON.stringify({ message: "unexpected" }));
+          return;
+        }
+        writeJson(response, 404, JSON.stringify({ message: "not found" }));
+      },
+    });
+
+    await expect(
+      probeBbServer({ serverUrl: testServer.url, timeoutMs: 500 }),
+    ).resolves.toEqual({
+      dataDir: null,
+      kind: "compatible",
+      serverUrl: testServer.url,
+    });
+    expect(versionRequestCount).toBe(0);
+  });
+
+  it("reports unavailable when nothing is listening", async () => {
+    const testServer = await startTestServer({
+      handler(_request, response) {
+        writeJson(response, 200, JSON.stringify({ ok: true }));
+      },
+    });
+    const unavailableUrl = testServer.url;
+    await testServer.close();
+    testServers.pop();
+
+    const result = await probeBbServer({
+      serverUrl: unavailableUrl,
+      timeoutMs: 500,
+    });
+
+    expect(result.kind).toBe("unavailable");
+  });
+});
+
+describe("waitForCompatibleServer", () => {
+  it("retries when the first system config response exceeds the probe timeout", async () => {
+    let configRequestCount = 0;
+    let firstConfigRequestAborted = false;
+    const configBody = JSON.stringify({
+      hostDaemonPort: 38987,
+      voiceTranscriptionEnabled: false,
+    });
+    const testServer = await startTestServer({
+      handler(request, response) {
+        if (request.url === "/health") {
+          writeJson(response, 200, JSON.stringify({ ok: true }));
+          return;
+        }
+        if (request.url === "/api/v1/system/config") {
+          configRequestCount += 1;
+          if (configRequestCount === 1) {
+            const timer = setTimeout(() => {
+              writeJson(response, 200, configBody);
+            }, 750);
+            response.once("close", () => {
+              clearTimeout(timer);
+              firstConfigRequestAborted = !response.writableEnded;
+            });
+            return;
+          }
+          writeJson(response, 200, configBody);
+          return;
+        }
+        writeJson(response, 404, JSON.stringify({ message: "not found" }));
+      },
+    });
+
+    await expect(
+      waitForCompatibleServer({
+        intervalMs: 250,
+        serverUrl: testServer.url,
+        timeoutMs: 5_000,
+      }),
+    ).resolves.toEqual({
+      dataDir: null,
+      kind: "compatible",
+      serverUrl: testServer.url,
+    });
+    expect(configRequestCount).toBe(2);
+    expect(firstConfigRequestAborted).toBe(true);
+  });
+
+  it.each([
+    { name: "HTTP error", status: 404, body: '{"message":"not found"}' },
+    { name: "invalid schema", status: 200, body: '{"unrelatedService":true}' },
+    {
+      name: "malformed JSON",
+      status: 200,
+      body: "<html>Another service</html>",
+    },
+  ])("stops after incompatible system config: $name", async (config) => {
+    let configRequestCount = 0;
+    const testServer = await startTestServer({
+      handler(request, response) {
+        if (request.url === "/health") {
+          writeJson(response, 200, JSON.stringify({ ok: true }));
+          return;
+        }
+        configRequestCount += 1;
+        writeJson(response, config.status, config.body);
+      },
+    });
+
+    await expect(
+      waitForCompatibleServer({
+        intervalMs: 250,
+        serverUrl: testServer.url,
+        timeoutMs: 5_000,
+      }),
+    ).resolves.toMatchObject({
+      kind: "incompatible",
+      serverUrl: testServer.url,
+    });
+    expect(configRequestCount).toBe(1);
+  });
+});

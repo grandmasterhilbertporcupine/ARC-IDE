@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "collectedAt": "2026-09-10T19:41:52.574Z",
+  "distribution": {
+    "package": "@huggingface/transformers",
+    "version": "4.2.0",
+    "path": "dist/transformers.node.mjs",
+    "bytes": 1256499,
+    "sha256": "4932ec78a6b136d97d09a12093afb476530d9aa099dbaf1f9822ad56bfe2bc3d"
+  },
+  "components": [
+    {
+      "package": "@huggingface/tokenizers",
+      "version": "0.1.3",
+      "distributionAnnotation": "@huggingface+tokenizers@0.1.3/node_modules/@huggingface/tokenizers/dist/tokenizers.mjs",
+      "registry": "https://registry.npmjs.org/%40huggingface%2Ftokenizers/0.1.3",
+      "sourceCommit": "d6fc380d3d4efec25eb1a132bb0cf4f32d618b6c",
+      "notices": [
+        "tokenizers-0.1.3-apache-2.0.txt"
+      ]
+    },
+    {
+      "package": "@huggingface/jinja",
+      "version": "0.5.6",
+      "distributionAnnotation": "@huggingface+jinja@0.5.6/node_modules/@huggingface/jinja/dist/index.js",
+      "registry": "https://registry.npmjs.org/%40huggingface%2Fjinja/0.5.6",
+      "archive": {
+        "url": "https://registry.npmjs.org/@huggingface/jinja/-/jinja-0.5.6.tgz",
+        "bytes": 71561,
+        "sha256": "5b94851daebf7b664bb8c15e4da7b6740249de7827dc2adaa43d454704b1708c",
+        "integrity": "sha512-MyMWyLnjqo+KRJYSH7oWNbsOn5onuIvfXYPcc0WOGxU0eHUV7oAYUoQTl2BMdu7ml+ea/bu11UM+EshbeHwtIA=="
+      },
+      "originalPackage": {
+        "name": "@huggingface/jinja",
+        "version": "0.5.6",
+        "description": "A minimalistic JavaScript implementation of the Jinja templating engine, specifically designed for parsing and rendering ML chat templates.",
+        "keywords": [
+          "face",
+          "hugging",
+          "huggingface",
+          "jinja",
+          "templates"
+        ],
+        "license": "MIT",
+        "author": "Hugging Face",
+        "repository": "https://github.com/huggingface/huggingface.js.git",
+        "source": "src/index.ts",
+        "files": [
+          "dist",
+          "README.md",
+          "src",
+          "tsconfig.json"
+        ],
+        "type": "module",
+        "main": "./dist/index.cjs",
+        "module": "./dist/index.js",
+        "types": "./dist/index.d.ts",
+        "exports": {
+          ".": {
+            "types": "./dist/index.d.ts",
+            "require": "./dist/index.cjs",
+            "import": "./dist/index.js"
+          }
+        },
+        "publishConfig": {
+          "access": "public"
+        },
+        "devDependencies": {
+          "@huggingface/transformers": "^3.0.0",
+          "typescript": "^5.3.2",
+          "@huggingface/hub": "^2.10.5"
+        },
+        "engines": {
+          "node": ">=18"
+        },
+        "scripts": {
+          "lint": "eslint --quiet --fix --ext .cjs,.ts .",
+          "lint:check": "eslint --ext .cjs,.ts .",
+          "format": "oxfmt .",
+          "format:check": "oxfmt --check .",
+          "build": "tsup src/index.ts --format cjs,esm --clean && tsc --emitDeclarationOnly --declaration",
+          "test": "vitest run",
+          "test:browser": "vitest run --browser.name=chrome --browser.headless",
+          "check": "tsc"
+        }
+      },
+      "originalPackageSha256": "7978c9731fd2c81c33a34da95bc93990dd47dcac821e6a99777809c9ed17b837",
+      "publishProvenance": {
+        "url": "https://registry.npmjs.org/-/npm/v1/attestations/@huggingface%2fjinja@0.5.6",
+        "reportedSourceCommit": "f9f7b300148c47cae88b119f62ec8ad94636a137",
+        "note": "The publish provenance source package.json declares 0.5.5; the published, integrity-checked archive declares 0.5.6. License bytes were retained from that exact archive."
+      },
+      "notices": [
+        "jinja-0.5.6-mit.txt"
+      ]
+    },
+    {
+      "package": "onnxruntime-web",
+      "version": "1.26.0-dev.20260416-b7804b056c",
+      "distributionAnnotation": "onnxruntime-web@1.26.0-dev.20260416-b7804b056c/node_modules/onnxruntime-web/dist/ort.webgpu.bundle.min.mjs",
+      "registry": "https://registry.npmjs.org/onnxruntime-web/1.26.0-dev.20260416-b7804b056c",
+      "sourceCommit": "b7804b056c30aa35c1748f8e4e239d0e2ff25d6d",
+      "notices": [
+        "onnxruntime-web-b7804b056c-mit.txt",
+        "onnxruntime-web-b7804b056c-third-party-notices.txt"
+      ]
+    }
+  ],
+  "notices": [
+    {
+      "path": "jinja-0.5.6-mit.txt",
+      "url": "https://registry.npmjs.org/@huggingface/jinja/-/jinja-0.5.6.tgz",
+      "archiveEntry": "package/LICENSE",
+      "bytes": 1069,
+      "sha256": "d6e7b19451c1b3d1d66353bb4b1274138953b3bfd9ae60c56e77b1f548796982"
+    },
+    {
+      "path": "tokenizers-0.1.3-apache-2.0.txt",
+      "url": "https://raw.githubusercontent.com/huggingface/tokenizers.js/d6fc380d3d4efec25eb1a132bb0cf4f32d618b6c/LICENSE",
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "path": "onnxruntime-web-b7804b056c-mit.txt",
+      "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/b7804b056c30aa35c1748f8e4e239d0e2ff25d6d/LICENSE",
+      "bytes": 1073,
+      "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+    },
+    {
+      "path": "onnxruntime-web-b7804b056c-third-party-notices.txt",
+      "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/b7804b056c30aa35c1748f8e4e239d0e2ff25d6d/ThirdPartyNotices.txt",
+      "bytes": 325054,
+      "sha256": "0e07b95f3a8d6230037707c5c4a2b554d12c4cb67369669ac255635528ffcee2"
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { migrations } from "./data.js";
+import { ingestLegacyImport } from "./legacy-import.js";
+import { pluginDataDirFromDb } from "./path.js";
+import { automationRpcContract, createRpcHandlers } from "./rpc.js";
+import {
+  closeAutomationRunForSettledThread,
+  disableAutomationsForDeletedThreadEvent,
+  reconcileRunningAutomationRuns,
+} from "./run.js";
+import { registerAutomationCli } from "./cli.js";
+import { createAutomationService } from "./service.js";
+import { sleep, sweepDueAutomations, SWEEP_INTERVAL_MS } from "./sweep.js";
+
+export default async function plugin(bb: BbPluginApi) {
+  const db = bb.storage.database();
+  bb.storage.migrate(db, migrations);
+  const pluginDataDir = pluginDataDirFromDb(db);
+  await ingestLegacyImport({ bb, db, pluginDataDir });
+
+  const service = createAutomationService({
+    bb,
+    db,
+    pluginDataDir,
+    get serverUrl() {
+      return bb.server.loopbackBaseUrl;
+    },
+  });
+
+  bb.rpc.register(automationRpcContract, createRpcHandlers(service));
+  registerAutomationCli({ bb, service });
+
+  bb.events.on("thread.idle", ({ thread }) => {
+    closeAutomationRunForSettledThread(bb, db, {
+      threadId: thread.id,
+      status: "idle",
+    });
+  });
+  bb.events.on("thread.failed", ({ thread, error }) => {
+    closeAutomationRunForSettledThread(bb, db, {
+      threadId: thread.id,
+      status: "failed",
+      error,
+    });
+  });
+
+  bb.events.on("thread.deleted", ({ thread }) => {
+    disableAutomationsForDeletedThreadEvent(bb, db, thread.id);
+  });
+
+  bb.background.service("automation-sweep", {
+    async start(signal) {
+      try {
+        await reconcileRunningAutomationRuns(bb, db);
+      } catch (error) {
+        bb.log.error(
+          `Automation startup reconciliation failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+      while (!signal.aborted) {
+        try {
+          await sweepDueAutomations(bb, db, {
+            pluginDataDir,
+            serverUrl: bb.server.loopbackBaseUrl,
+          });
+        } catch (error) {
+          bb.log.error(
+            `Automation sweep failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+        await sleep(SWEEP_INTERVAL_MS, signal);
+      }
+    },
+  });
+}

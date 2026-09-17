@@ -1,0 +1,12 @@
+{
+  "project": "ARC",
+  "upstream": "https://github.com/get-bb/bb.git",
+  "commit": "06aeaa994942ae7527dc49d2268c1f801e8542a0",
+  "inheritedFrom": "WNDR working-tree snapshot",
+  "snapshotSha256": "088b70731c52829996661b82439c731019b0d98d99bfc959dc86def6c2c11f59",
+  "sourceFileCount": 6024,
+  "excludedFileCount": 0,
+  "snapshotAt": "2026-09-10T02:32:47.180Z",
+  "license": "MIT",
+  "compatibility": "Retain BB internal package, provider, SDK and CLI identities; ARC application identity and data are separate."
+}

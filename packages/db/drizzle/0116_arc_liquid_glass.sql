@@ -1,0 +1,1 @@
+ALTER TABLE `app_theme` ADD `surface_style` text DEFAULT 'default' NOT NULL;

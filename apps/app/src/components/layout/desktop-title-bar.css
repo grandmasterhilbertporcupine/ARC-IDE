@@ -1,0 +1,92 @@
+:where(.bb-app-shell-root) {
+  --arc-window-titlebar-height: 0px;
+}
+
+:where(.bb-app-shell-root[data-arc-window-chrome]) :where(body #root) {
+  box-sizing: border-box;
+  padding-top: var(--arc-window-titlebar-height);
+}
+
+:where(.bb-app-shell-root[data-arc-window-chrome])
+  :where([data-sidebar="panel"], [data-secondary-panel-shelf]) {
+  top: var(--arc-window-titlebar-height);
+  bottom: auto;
+  height: calc(var(--bb-shell-height) - var(--arc-window-titlebar-height));
+}
+
+:where(.bb-app-shell-root[data-arc-window-chrome])
+  :where(
+    [data-sidebar-mobile-backdrop],
+    [data-secondary-panel-shelf-dismiss],
+    [data-persistent-drawer-backdrop],
+    .arc-backdrop-motion
+  ) {
+  top: var(--arc-window-titlebar-height);
+}
+
+:where(.bb-app-shell-root[data-arc-window-chrome])
+  :where(
+    [data-testid="app-sidebar-trigger-overlay"],
+    [data-testid="route-navigation-indicator"]
+  ) {
+  top: calc(var(--arc-window-titlebar-height) + env(safe-area-inset-top, 0px));
+}
+
+:where(.bb-app-shell-root[data-arc-window-chrome])
+  :where([data-persistent-drawer-content]) {
+  max-height: min(
+    92dvh,
+    calc(var(--bb-shell-height) - var(--arc-window-titlebar-height) - 1.5rem)
+  );
+}
+
+:where(.bb-app-shell-root[data-arc-window-chrome])
+  :where([data-image-lightbox][role="dialog"]) {
+  top: var(--arc-window-titlebar-height);
+  height: calc(var(--bb-shell-height) - var(--arc-window-titlebar-height));
+}
+
+:where(.arc-window-titlebar) {
+  position: fixed;
+  inset: 0 0 auto;
+  height: var(--arc-window-titlebar-height);
+  background-color: var(--sidebar);
+  color: var(--foreground);
+  border-bottom: 1px solid var(--border-seam);
+  app-region: drag;
+  -webkit-app-region: drag;
+}
+
+:where(.arc-window-titlebar-brand) {
+  position: absolute;
+  inset-block: 0;
+  left: calc(env(titlebar-area-x, 0px) + 1rem);
+}
+
+:where(.arc-window-titlebar-context) {
+  --arc-titlebar-reserve: max(
+    10rem,
+    calc(env(titlebar-area-x, 0px) + 7rem),
+    calc(
+      100% - env(titlebar-area-width, calc(100% - 9rem)) -
+        env(titlebar-area-x, 0px) + 1rem
+    )
+  );
+  position: absolute;
+  inset-block: 0;
+  inset-inline: var(--arc-titlebar-reserve);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+}
+
+:where(.arc-window-titlebar[data-focused="false"]) {
+  color: color-mix(in oklch, var(--foreground) 65%, var(--sidebar));
+}
+
+:where(
+  .arc-window-titlebar[data-focused="false"] .arc-window-titlebar-brand img
+) {
+  opacity: 0.7;
+}
