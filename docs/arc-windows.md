@@ -47,7 +47,7 @@ Read development URLs and data paths from launcher output. Packaged ARC uses app
 
 Stable Windows builds use public GitHub Releases at grandmasterhilbertporcupine/ARC-IDE by default. ARC checks on launch, periodically and through Settings > Updates, downloads new stable releases in the background, and installs on restart or quit. No GitHub token is bundled or needed. At build time, an explicitly empty `ARC_UPDATE_BASE_URL` disables updating; a nonempty HTTPS override preserves the custom `/desktop-latest/` or `/desktop-nightly/` feed path. Default nightly, macOS and Linux builds have no published feed. Builds through 0.42.8 need a one-time manual install to enable GitHub updates.
 
-Build verification does not publish files. Follow [release verification](arc-releases.md) to generate and verify the installer and feeds together. Source pushes, tags and public releases remain paused until renewed owner authorization.
+Build verification does not publish files. Follow [release verification](arc-releases.md) to generate and verify the installer and feeds together. Source publication is authorized separately; public binary releases and tags remain pending. The [MVP verification status](arc-mvp-status.md) identifies the current candidate and incomplete installed-payload gate.
 
 ## Acceptance
 

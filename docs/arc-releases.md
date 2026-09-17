@@ -1,6 +1,6 @@
 # ARC release verification
 
-Public publishing is paused. The current deliverable is a local unsigned Windows x64 personal installer, `ARC-0.42.10-x64.exe`. A successful build or verification receipt does not authorize a source push, tag or GitHub release.
+Source publication is authorized separately from binary releases. The current binary is a local unsigned Windows x64 candidate, `ARC-0.42.10-x64.exe`; public installer downloads remain pending. Its source and packaged checks passed, but installed-payload lifecycle verification is incomplete. See [MVP verification status](arc-mvp-status.md). A successful source push or build does not satisfy the binary release gates or authorize a tag or GitHub release.
 
 ## Build and verify locally
 
