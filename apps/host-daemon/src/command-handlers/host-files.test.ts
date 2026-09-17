@@ -231,16 +231,20 @@ describe("readHostFileMetadata", () => {
       process.platform === "win32" ? "junction" : "dir",
     );
 
-    await expect(
-      readHostFileMetadata({
-        type: "host.file_metadata",
-        path: path.join(symlinkPath, "metadata.txt"),
-        rootPath: repoPath,
-      }),
-    ).rejects.toMatchObject({
-      code: "invalid_path",
-      message: expect.stringContaining("escapes read root"),
-    });
+    try {
+      await expect(
+        readHostFileMetadata({
+          type: "host.file_metadata",
+          path: path.join(symlinkPath, "metadata.txt"),
+          rootPath: repoPath,
+        }),
+      ).rejects.toMatchObject({
+        code: "invalid_path",
+        message: expect.stringContaining("escapes read root"),
+      });
+    } finally {
+      await fs.unlink(symlinkPath);
+    }
   });
 });
 
