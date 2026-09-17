@@ -10,7 +10,7 @@ import type { RunAgentSnapshot } from "./definition.js";
 import { runtimeHash } from "./hash.js";
 import { validateDirectoryTeamGraph } from "./directory-graph-validation.js";
 import { analyzeTeamReviewGrants } from "../teams/review-grants.js";
-import type { CompositionAuthorization } from "./composition-authorization.js";
+import type { CompositionAuthorization } from "./composition-authorization-contract.js";
 
 export type AddressedComponent = {
   revision: TeamRevision;

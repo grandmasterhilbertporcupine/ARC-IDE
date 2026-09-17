@@ -27,10 +27,8 @@ import {
 import type { RunAgentSnapshot } from "./definition.js";
 import { runtimeHash } from "./hash.js";
 import { latestAddressedRun } from "./addressed-continuation.js";
-import {
-  sealCompositionAuthorization,
-  type CompositionOrigin,
-} from "./composition-authorization.js";
+import { sealCompositionAuthorization } from "./composition-authorization.js";
+import type { CompositionOrigin } from "./composition-authorization-contract.js";
 
 function standaloneComponent(
   agent: RunAgentSnapshot,

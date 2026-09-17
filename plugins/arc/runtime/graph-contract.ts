@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ownedStepRefSchema } from "bb-plugin-workflows/owned-contract";
 import { resolvedRunPolicySchema } from "../policy/contract.js";
 import { teamRevisionSchema } from "../teams/contract.js";
-import { compositionAuthorizationSchema } from "./composition-authorization.js";
+import { compositionAuthorizationSchema } from "./composition-authorization-contract.js";
 import {
   gitOidSchema,
   runAgentSnapshotSchema,

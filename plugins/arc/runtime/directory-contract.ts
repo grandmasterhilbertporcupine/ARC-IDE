@@ -6,7 +6,7 @@ import {
 } from "../host-directory-contract.js";
 import { resolvedRunPolicySchema } from "../policy/contract.js";
 import { teamRevisionSchema } from "../teams/contract.js";
-import { compositionAuthorizationSchema } from "./composition-authorization.js";
+import { compositionAuthorizationSchema } from "./composition-authorization-contract.js";
 import {
   runAgentSnapshotSchema,
   runIdSchema,

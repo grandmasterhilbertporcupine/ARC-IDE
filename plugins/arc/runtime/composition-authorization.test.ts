@@ -16,10 +16,12 @@ import { orchestratedRunRequestSchema } from "./orchestrated-contract.js";
 import { directoryRunRequestSchema } from "./directory-contract.js";
 import {
   compositionAllowedByPolicy,
-  compositionAuthorizationSchema,
   sealCompositionAuthorization,
-  type CompositionOrigin,
 } from "./composition-authorization.js";
+import {
+  compositionAuthorizationSchema,
+  type CompositionOrigin,
+} from "./composition-authorization-contract.js";
 
 function fixture(kind: "git" | "directory" = "git") {
   const base = graphRunDefinitionFixture();

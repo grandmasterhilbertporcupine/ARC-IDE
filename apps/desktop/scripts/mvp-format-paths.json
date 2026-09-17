@@ -1,4 +1,6 @@
 [
+  "plugins/arc/runtime/composition-authorization-contract.ts",
+  "packages/plugin-build/src/arc-browser-contract.test.ts",
   "apps/host-daemon/src/command-handlers/host-files.test.ts",
   "apps/host-daemon/src/desktop-browser-broker.test.ts",
   ".github/workflows/arc-release.yml",
