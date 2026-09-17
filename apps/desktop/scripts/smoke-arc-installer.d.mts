@@ -19,5 +19,9 @@ export function parseInstallerMetadata(
 export function installerUninstallerName(config: unknown): string;
 export function runInstallerSmoke(
   installer: string,
-  options?: { upgradeInstaller?: string; requireSignature?: boolean },
+  options?: {
+    upgradeInstaller?: string;
+    requireSignature?: boolean;
+    releaseManifest?: string;
+  },
 ): Promise<Record<string, unknown>>;

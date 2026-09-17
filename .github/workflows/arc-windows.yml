@@ -8,17 +8,22 @@ permissions:
   contents: read
 jobs:
   windows:
-    name: Windows Server 2022 build and packaged smoke
+    name: Serial MVP source, package, and installer verification
     runs-on: windows-2022
-    timeout-minutes: 90
+    timeout-minutes: 150
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
       TURBO_CONCURRENCY: "1"
       NODE_OPTIONS: --max-old-space-size=4096
       UV_THREADPOOL_SIZE: "2"
+      npm_config_jobs: "1"
+      CMAKE_BUILD_PARALLEL_LEVEL: "1"
+      MAX_JOBS: "1"
       TURBO_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: "24.14.0"
@@ -27,40 +32,31 @@ jobs:
           version: 9.15.0
       - name: Check desktop and bundled app versions
         run: node .github/workflows/check-version-lockstep.mjs
-      - name: Install workspace
-        run: pnpm install --frozen-lockfile
-      - name: Verify native desktop foundation
-        run: pnpm exec turbo run typecheck test --filter=@bb/domain --filter=@bb/process-utils --filter=@bb/desktop --output-logs=errors-only
-      - name: Verify native PowerShell and ConPTY
-        run: pnpm exec turbo run test --filter=@bb/host-daemon --output-logs=errors-only '--' src/terminals/windows-conpty.test.ts
-      - name: Verify native Unicode file watching
-        run: pnpm exec turbo run test --filter=@bb/host-watcher --output-logs=errors-only '--' test/windows-watch.test.ts
-      - name: Verify owned Windows process identity and cleanup
-        run: pnpm exec turbo run test --filter=@bb/config --output-logs=errors-only '--' test/windows-verified-process-stop.test.ts
-      - name: Verify provider onboarding contracts without credentials
-        run: pnpm exec turbo run test --filter=bb-plugin-provider-codex --filter=bb-plugin-provider-claude-code --filter=bb-plugin-provider-pi --filter=bb-plugin-provider-acp --output-logs=errors-only '--' src/bridge/codex-login.test.ts src/bridge/provider-maintenance.test.ts src/agents.test.ts src/probe-capabilities.test.ts
-      - name: Package desktop and installer for verification
-        run: pnpm exec turbo run dist:windows --filter=@bb/desktop
-      - name: Exercise the packaged Windows application and restart
-        timeout-minutes: 15
-        shell: pwsh
-        run: |
-          $env:TEMP = $env:RUNNER_TEMP
-          $env:TMP = $env:RUNNER_TEMP
-          node apps/desktop/scripts/smoke-arc-windows.mjs | Tee-Object -FilePath "$env:RUNNER_TEMP/arc-packaged-smoke.log"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install workspace serially
+        run: pnpm install --frozen-lockfile --child-concurrency=1 --network-concurrency=4
+      - name: Verify the committed MVP source
+        run: pnpm run verify:mvp
+      - name: Build a fresh installer bound to verified source
+        run: pnpm run release:build
+      - name: Exercise packaged teams, managed Preview, security, and installer options
+        run: pnpm run verify:mvp:packaged
+      - name: Verify installed payload, launch, reinstall, and uninstall
+        run: pnpm run release:verify-installer
+      - name: Finalize verified local assets
+        run: pnpm run release:assets
       - name: Retain verification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ARC-Windows-verification
           path: |
-            ${{ runner.temp }}/arc-packaged-smoke.log
-            ${{ runner.temp }}/ARC packaged smoke*/result.json
-            ${{ runner.temp }}/ARC packaged smoke*/electron.log
-            apps/desktop/.turbo/turbo-test.log
-            apps/host-daemon/.turbo/turbo-test.log
-            packages/process-utils/.turbo/turbo-test.log
+            .arc-verification/mvp/**/*.log
+            .arc-verification/mvp/**/*.json
+            .arc-verification/mvp/**/*.png
+            .arc-verification/NSIS install */**/*.json
+            .arc-verification/NSIS install */**/*.log
+            .arc-verification/NSIS install */**/*.png
+            apps/desktop/.turbo/*.log
           include-hidden-files: true
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4
@@ -69,4 +65,10 @@ jobs:
           path: |
             apps/desktop/release/*.exe
             apps/desktop/release/*.blockmap
+            apps/desktop/release/*.yml
+            apps/desktop/release/*.json
+            apps/desktop/release/*.sha256
+            apps/desktop/release/*.install.txt
+            apps/desktop/release/SHA256SUMS
+            apps/desktop/release/verification-logs/**
           if-no-files-found: error

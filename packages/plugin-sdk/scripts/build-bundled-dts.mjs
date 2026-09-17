@@ -191,7 +191,17 @@ if (!isMainThread) {
 async function main() {
   const generated = {};
   const queue = Object.entries(outputs);
-  const workers = Math.min(queue.length, availableParallelism());
+  const requestedWorkers =
+    process.env.MAX_JOBS === undefined
+      ? availableParallelism()
+      : Number(process.env.MAX_JOBS);
+  if (!Number.isSafeInteger(requestedWorkers) || requestedWorkers < 1)
+    throw new Error("MAX_JOBS must be a positive integer");
+  const workers = Math.min(
+    queue.length,
+    availableParallelism(),
+    requestedWorkers,
+  );
   await Promise.all(
     Array.from({ length: workers }, async () => {
       for (let next = queue.shift(); next; next = queue.shift()) {
@@ -210,13 +220,19 @@ async function main() {
 
 function generateInWorker(entry) {
   return new Promise((resolve, reject) => {
+    let result;
     const worker = new Worker(new URL(import.meta.url), {
       workerData: { entry },
     });
-    worker.once("message", resolve);
+    worker.once("message", (code) => {
+      result = code;
+    });
     worker.once("error", reject);
     worker.once("exit", (code) => {
       if (code !== 0) reject(new Error(`bundle worker exited with ${code}`));
+      else if (typeof result !== "string")
+        reject(new Error("bundle worker exited without declarations"));
+      else resolve(result);
     });
   });
 }

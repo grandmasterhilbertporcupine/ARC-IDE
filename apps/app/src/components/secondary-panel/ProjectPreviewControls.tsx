@@ -33,12 +33,9 @@ export function ProjectPreviewControls({
     queryKey,
     queryFn: () => sdk.experimental_previews.get({ projectId: projectId! }),
     enabled: Boolean(projectId) && visible,
-    refetchInterval: (query) =>
-      visible &&
-      query.state.data?.terminal &&
-      ["starting", "running"].includes(query.state.data.terminal.status)
-        ? 5_000
-        : false,
+    refetchInterval: Boolean(projectId) && visible ? 5_000 : false,
+    refetchOnReconnect: true,
+    refetchOnWindowFocus: true,
   });
   const [editing, setEditing] = useState(false);
   const [pendingOpen, setPendingOpen] = useState(false);

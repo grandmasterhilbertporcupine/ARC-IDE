@@ -21,6 +21,7 @@ import { compileArcDirectoryRun } from "./directory-compiler.js";
 import { createDirectorySetupService } from "./directory-setup-service.js";
 import type { ArcRunStore } from "./data.js";
 import { runtimeHash } from "./hash.js";
+import { compositionAllowedByPolicy } from "./composition-authorization.js";
 import {
   arcInstructionUpdatesRpcContract,
   instructionUpdateApplicationSchema,
@@ -103,6 +104,22 @@ export function createInstructionUpdateService(
       throw new AgentStoreError(
         "run_submission_uncertain",
         "Reconcile this saved run before reviewing updated instructions",
+      );
+    const definition = current.compiled.definition;
+    if (
+      !compositionAllowedByPolicy({
+        projectId: definition.request.projectId,
+        team: definition.team,
+        members: definition.members,
+        policy: definition.policy,
+        ...(definition.compositionAuthorization === undefined
+          ? {}
+          : { compositionAuthorization: definition.compositionAuthorization }),
+      })
+    )
+      throw new AgentStoreError(
+        "team_restricted",
+        "The retained team composition is outside its pinned allowed teams",
       );
     return {
       ...current,
@@ -512,6 +529,10 @@ export function createInstructionUpdateService(
     },
   ) {
     const before = current.definition;
+    const {
+      compositionAuthorization: _compositionAuthorization,
+      ...previousDefinition
+    } = before;
     const request = {
       ...before.request,
       operationId: `${selected.kind}_${randomUUID()}`,
@@ -520,7 +541,7 @@ export function createInstructionUpdateService(
       expectedSessionPolicyVersion: selected.sessionVersion,
     };
     const base = {
-      ...before,
+      ...previousDefinition,
       runId: `run_${randomUUID()}`,
       team: selected.team,
       members: selected.members,

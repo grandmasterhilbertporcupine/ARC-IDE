@@ -53,6 +53,7 @@ import { runtimeHash } from "./hash.js";
 import type { RetainedCompiledRun } from "./compiled.js";
 import type { RuleUpdatePreview } from "./rule-update-contract.js";
 import type { ResolvedRunPolicy } from "../policy/contract.js";
+import { sealCompositionAuthorization } from "./composition-authorization.js";
 
 const databases: Database.Database[] = [];
 const hosts: FakePluginHost[] = [];
@@ -97,6 +98,67 @@ const ruleRequest = (
 });
 
 describe("reviewed operational rule continuation", () => {
+  it("rejects changed predecessor snapshots before either continuation can discard the proof", async () => {
+    const f = fixture(3, false, undefined, true);
+    const selection = f.publish();
+    const altered = structuredClone(f.compiled);
+    altered.definition.members.builder.execution.model =
+      "changed-after-admission";
+    f.db
+      .prepare("UPDATE arc_runs SET compiled_json = ? WHERE id = ?")
+      .run(JSON.stringify(altered), altered.definition.runId);
+    await expect(f.preview(selection)).rejects.toMatchObject({
+      code: "composition_authorization_mismatch",
+    });
+    await expect(f.previewRules(selection)).rejects.toMatchObject({
+      code: "composition_authorization_mismatch",
+    });
+    expect(
+      f.calls.ruleStarts + f.calls.continuationStarts + f.calls.directStarts,
+    ).toBe(0);
+  });
+  it.each([2, 3, 4] as const)(
+    "drops composite authority when selecting a published successor (V%i)",
+    async (version) => {
+      for (const kind of ["instructions", "rules"] as const) {
+        const f = fixture(version, false, undefined, true);
+        const original = JSON.stringify(f.compiled);
+        const selection =
+          kind === "instructions"
+            ? f.publish()
+            : f.publish((team) => {
+                const check = team.graph.nodes.find(
+                  (node) => node.kind === "check",
+                );
+                if (!check || check.kind !== "check")
+                  throw new Error("Expected check");
+                check.command.args = ["--test", "reviewed-check.mjs"];
+              }, "Original published instructions");
+        const result =
+          kind === "instructions"
+            ? await f.service
+                .handlers()
+                .applyRunInstructionUpdate(apply(await f.preview(selection)))
+            : await f.service
+                .handlers()
+                .applyRunRuleUpdate(
+                  ruleRequest(await readyRulePreview(f, selection)),
+                );
+        expect(result.state).toBe("applied");
+        const successor = f.store.get(result.successorRunId).compiled
+          .definition;
+        if (successor.schemaVersion === 1) throw new Error("Expected team run");
+        expect(successor.team.revision).toBe(selection.revision);
+        expect(successor).not.toHaveProperty("compositionAuthorization");
+        expect(
+          JSON.stringify(f.store.get(f.compiled.definition.runId).compiled),
+        ).toBe(original);
+        expect(f.compiled.definition).toHaveProperty(
+          "compositionAuthorization",
+        );
+      }
+    },
+  );
   it.each([2, 3, 4] as const)(
     "seals reviewed policy and check bytes through the amendment path (V%i)",
     async (version) => {
@@ -580,6 +642,7 @@ function fixture(
   version: 2 | 3 | 4 = 4,
   restricted = false,
   configureTeam?: (team: TeamDefinition) => void,
+  compositionAuthorization = false,
 ) {
   const db = new Database(":memory:");
   databases.push(db);
@@ -891,6 +954,20 @@ function fixture(
       expectedProjectPolicyVersion: 1,
     },
   };
+  if (compositionAuthorization)
+    definition.compositionAuthorization = sealCompositionAuthorization(
+      scope.projectId,
+      { team: definition.team, members: definition.members },
+      [
+        {
+          kind: "team",
+          scope,
+          entityId: definition.team.teamId,
+          revision: definition.team.revision,
+          contentHash: definition.team.contentHash,
+        },
+      ],
+    );
   const {
     expectedSource: _source,
     sourceInspectionId: _inspection,

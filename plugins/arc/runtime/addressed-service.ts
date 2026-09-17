@@ -27,6 +27,10 @@ import {
 import type { RunAgentSnapshot } from "./definition.js";
 import { runtimeHash } from "./hash.js";
 import { latestAddressedRun } from "./addressed-continuation.js";
+import {
+  sealCompositionAuthorization,
+  type CompositionOrigin,
+} from "./composition-authorization.js";
 
 function standaloneComponent(
   agent: RunAgentSnapshot,
@@ -296,6 +300,12 @@ export function createAddressedDispatch(
         {
           revision: prior.compiled.definition.team,
           members: prior.compiled.definition.members,
+          ...(prior.compiled.definition.compositionAuthorization === undefined
+            ? {}
+            : {
+                compositionAuthorization:
+                  prior.compiled.definition.compositionAuthorization,
+              }),
         },
       );
     const parent = await bb.sdk.threads.get({ threadId: context.threadId });
@@ -342,6 +352,7 @@ export function createAddressedDispatch(
     };
     const components: AddressedComponent[] = [];
     const standalone: RunAgentSnapshot[] = [];
+    const origins: CompositionOrigin[] = [];
     for (const recipient of recipients) {
       const scope = addressedRecipientScope(
         recipient.scopeKey,
@@ -361,6 +372,13 @@ export function createAddressedDispatch(
         policy.requireAllowed(settings.effective, {
           teamId: revision.teamId,
           revision: revision.revision,
+        });
+        origins.push({
+          kind: "team",
+          scope,
+          entityId: revision.teamId,
+          revision: revision.revision,
+          contentHash: revision.contentHash,
         });
         const members = Object.fromEntries(
           revision.definition.members.map((member) => {
@@ -393,11 +411,18 @@ export function createAddressedDispatch(
             "agent_archived",
             "Restore this agent before addressing it",
           );
-        standalone.push(
-          snapshot(
-            agents.getRevision({ ...target, revision: recipient.versionId }),
-          ),
-        );
+        const revision = agents.getRevision({
+          ...target,
+          revision: recipient.versionId,
+        });
+        origins.push({
+          kind: "agent",
+          scope,
+          entityId: revision.agentId,
+          revision: revision.revision,
+          contentHash: revision.contentHash,
+        });
+        standalone.push(snapshot(revision));
       }
     }
     let composition: AddressedComponent;
@@ -464,6 +489,14 @@ export function createAddressedDispatch(
               createdAt: Date.now(),
             });
     }
+    composition = {
+      ...composition,
+      compositionAuthorization: sealCompositionAuthorization(
+        context.projectId,
+        { team: composition.revision, members: composition.members },
+        origins,
+      ),
+    };
     if (prior)
       return runs.continueAddressedRun(
         {

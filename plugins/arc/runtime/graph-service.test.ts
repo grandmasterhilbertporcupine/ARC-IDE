@@ -37,6 +37,16 @@ import { graphServicesFixture, runDefinitionFixture } from "./testing.js";
 import { directoryValidationMigrations } from "./directory-validation.js";
 import type { DirectoryRunRequest } from "./directory-contract.js";
 import { directoryEffectRequestHash } from "../host/hash.js";
+import { composeAddressedTeams } from "./addressed-composition.js";
+import { resolveRunAgentSnapshot } from "./execution-snapshot.js";
+import { sealCompositionAuthorization } from "./composition-authorization.js";
+import { createAddressedDispatch } from "./addressed-service.js";
+import {
+  createArcTemplateService,
+  templateMigrations,
+} from "../templates/service.js";
+import { assignedSkillMigrations } from "../assigned-skills.js";
+import { addressedContinuationMigrations } from "./addressed-continuation-data.js";
 
 const databases: Database.Database[] = [];
 const hosts: FakePluginHost[] = [];
@@ -62,7 +72,12 @@ function setup(
   databases.push(db);
   db.pragma("foreign_keys = ON");
   db.exec(
-    [...migrations, ...runtimeMigrations, ...workflowMigrations].join(";\n"),
+    [
+      ...migrations,
+      ...runtimeMigrations,
+      ...workflowMigrations,
+      ...addressedContinuationMigrations,
+    ].join(";\n"),
   );
   const agents = createAgentStore(db);
   const scope = options.scope ?? {
@@ -125,6 +140,7 @@ function setup(
           options.execution === "project" ? projectExecution : null,
       },
       threads: {
+        list: () => [],
         get: () => ({
           id: source.request.originThreadId,
           projectId: source.request.projectId,
@@ -154,10 +170,13 @@ function setup(
       },
     },
     async experimental_callHostRpc(call) {
-      if (options.directory && call.method === "inspectProjectSource") {
+      if (call.method === "inspectProjectSource") {
         options.onInspect?.();
         await options.inspectGate;
-        return { kind: "directory", path: workspace.path };
+        return {
+          kind: options.directory ? "directory" : "git",
+          path: workspace.path,
+        };
       }
       if (call.method !== "inspectWorkspace")
         throw new Error("Run authoring must not execute a native effect");
@@ -382,6 +401,254 @@ function directoryRequest(
     invocation: null,
   };
 }
+
+describe("restricted addressed composition admission", () => {
+  it("creates authorization from stored recipient revisions and ignores display labels", async () => {
+    const state = setup();
+    state.db.exec(
+      [...templateMigrations, ...assignedSkillMigrations].join(";\n"),
+    );
+    const projectId = state.request.projectId;
+    const templates = createArcTemplateService(
+      state.db,
+      state.agents,
+      state.graph.teams,
+      {
+        requireProject: async () => {},
+        projectSource: async () => ({
+          hostId: state.request.hostId,
+          kind: "git",
+        }),
+        validateExecution: async () => {},
+        changed() {},
+      },
+    );
+    const execution = state.projectExecution;
+    const { team: second } = await templates
+      .handlers()
+      .instantiateTeamTemplate({
+        templateId: "efficient-build",
+        version: 1,
+        projectId,
+        operationId: "template-for-addressed-test",
+        configuration: {
+          roles: {
+            lead: execution,
+            reader: execution,
+            builder: execution,
+            reviewer: execution,
+          },
+          check: { executable: "node", args: ["--test"], timeoutMs: 60000 },
+        },
+      });
+    const pins = [state.team, second].map((team) => ({
+      teamId: team.id,
+      revision: 1,
+    }));
+    const policy = { ...defaultRunPolicy(), restrictedTeams: pins };
+    state.graph.policies.saveProject({ projectId, expectedVersion: 0, policy });
+    const dispatch = createAddressedDispatch(
+      state.host.bb,
+      state.agents,
+      state.graph.teams,
+      state.store,
+      state.service,
+      state.graph.policies,
+      state.graph.policy,
+      templates,
+    );
+    const context = {
+      projectId,
+      threadId: state.request.originThreadId,
+      operationId: state.request.operationId,
+      prompt: [
+        {
+          type: "text" as const,
+          text: "Build the requested result",
+          mentions: [],
+        },
+      ],
+      recipients: pins.map((pin) => ({
+        kind: "team" as const,
+        entityId: pin.teamId,
+        versionId: pin.revision,
+        scopeKey: `project:${projectId}`,
+        pluginId: "arc",
+        label: "Caller supplied label",
+      })),
+    };
+    const first = await dispatch(context);
+    const retained = state.store.get(first.runId).compiled.definition;
+    if (retained.schemaVersion !== 3)
+      throw new Error("Expected addressed Git run");
+    const actual = retained.compositionAuthorization!;
+    expect(actual.origins).toHaveLength(2);
+    for (const origin of actual.origins) {
+      const revision = state.graph.teams.getRevision({
+        scope: origin.scope,
+        teamId: origin.entityId,
+        revision: origin.revision,
+      });
+      expect(origin.contentHash).toBe(revision.contentHash);
+    }
+    expect(retained.policy).toEqual(policy);
+    expect(JSON.stringify(actual)).not.toContain("Caller supplied label");
+    expect(
+      (
+        await dispatch({
+          ...context,
+          recipients: context.recipients.map((recipient) => ({
+            ...recipient,
+            label: "Another label",
+          })),
+        })
+      ).runId,
+    ).toBe(first.runId);
+    expect(state.submissions).toHaveLength(1);
+  });
+  it.each([false, true])(
+    "retains trusted origins through admission and reconciliation (directory %s)",
+    async (directory) => {
+      const state = setup({ directory });
+      const first = state.graph.teams.getRevision({
+        scope: state.team.scope,
+        teamId: state.team.id,
+        revision: 1,
+      });
+      let second = state.graph.teams.createTeam({
+        scope: state.team.scope,
+        definition: {
+          ...state.team.draft.definition,
+          name: "Second allowed team",
+        },
+      });
+      second = state.graph.teams.publish(teamTarget(second));
+      const revisions = [
+        first,
+        state.graph.teams.getRevision({
+          scope: second.scope,
+          teamId: second.id,
+          revision: 1,
+        }),
+      ];
+      const allowed = revisions.map((revision) => ({
+        teamId: revision.teamId,
+        revision: revision.revision,
+      }));
+      const policy = { ...defaultRunPolicy(), restrictedTeams: allowed };
+      state.graph.policies.saveProject({
+        projectId: state.request.projectId,
+        expectedVersion: 0,
+        policy,
+      });
+      const agent = resolveRunAgentSnapshot(
+        state.agents.getRevision({
+          scope: state.agent.scope,
+          agentId: state.agent.id,
+          revision: 1,
+        }),
+        { ...state.parentExecution, providerId: "claude-code" },
+      );
+      const composed = composeAddressedTeams({
+        operationId: state.request.operationId,
+        components: revisions.map((revision) => ({
+          revision,
+          members: { builder: agent },
+        })),
+        lead: agent,
+        reviewer: agent,
+        check: { executable: "node", args: ["--test"], timeoutMs: 60000 },
+        sourceKind: directory ? "directory" : "git",
+        createdAt: 1,
+      });
+      composed.compositionAuthorization = sealCompositionAuthorization(
+        state.request.projectId,
+        { team: composed.revision, members: composed.members },
+        revisions.map((revision) => ({
+          kind: "team",
+          scope: state.team.scope,
+          entityId: revision.teamId,
+          revision: revision.revision,
+          contentHash: revision.contentHash,
+        })),
+      );
+      const request = {
+        ...(directory
+          ? directoryRequest(state)
+          : { ...state.request, invocation: null }),
+        team: {
+          teamId: composed.revision.teamId,
+          revision: composed.revision.revision,
+        },
+        expectedProjectPolicyVersion: 1,
+        addressedRecipients: allowed.map((pin) => ({
+          kind: "team" as const,
+          entityId: pin.teamId,
+          versionId: pin.revision,
+          scopeKey: `project:${state.request.projectId}`,
+        })),
+      };
+      const result = await state.service.startAddressedRun(request, composed);
+      if (
+        result.definition.schemaVersion !== 3 &&
+        result.definition.schemaVersion !== 4
+      )
+        throw new Error("Expected addressed run");
+      expect(result.definition.compositionAuthorization).toEqual(
+        composed.compositionAuthorization,
+      );
+      expect(result.definition.policy).toEqual(policy);
+      const reconciled = await state.service.reconcileOrchestratedRun(
+        result.summary.runId,
+      );
+      expect(reconciled.summary.runId).toBe(result.summary.runId);
+      expect(state.submissions).toHaveLength(1);
+      expect(reconciled.definition).toEqual(result.definition);
+      const changed = structuredClone(
+        state.store.get(result.summary.runId).compiled,
+      );
+      if (
+        changed.definition.schemaVersion !== 3 &&
+        changed.definition.schemaVersion !== 4
+      )
+        throw new Error("Expected addressed run");
+      changed.definition.members.coordinator.execution.model =
+        "replaced-after-admission";
+      state.db
+        .prepare("UPDATE arc_runs SET compiled_json = ? WHERE id = ?")
+        .run(JSON.stringify(changed), result.summary.runId);
+      await expect(
+        state.service.reconcileOrchestratedRun(result.summary.runId),
+      ).rejects.toMatchObject({ code: "composition_authorization_mismatch" });
+      expect(state.submissions).toHaveLength(1);
+    },
+  );
+
+  it("cannot turn an unrelated allowed recipient label into public run authority", async () => {
+    const state = setup();
+    state.graph.policies.saveProject({
+      projectId: state.request.projectId,
+      expectedVersion: 0,
+      policy: { ...defaultRunPolicy(), restrictedTeams: [] },
+    });
+    await expect(
+      state.service.startOrchestratedRun({
+        ...state.request,
+        invocation: null,
+        expectedProjectPolicyVersion: 1,
+        addressedRecipients: [
+          {
+            kind: "team",
+            entityId: state.team.id,
+            versionId: 1,
+            scopeKey: `project:${state.request.projectId}`,
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: "team_restricted" });
+    expect(state.submissions).toHaveLength(0);
+  });
+});
 
 describe("directory main-run admission", () => {
   it("deduplicates simultaneous identical admissions without consuming the inspection for a second run", async () => {

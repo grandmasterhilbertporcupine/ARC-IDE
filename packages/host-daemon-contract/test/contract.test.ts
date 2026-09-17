@@ -746,6 +746,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "host.browse_directory may omit path to list the host's home directory, which a remote caller cannot resolve.",
   "hostDaemonOnlineRpcCommandSchema.ref":
     "host.read_file may omit ref to read from disk; setting ref switches to git history at that ref.",
+  "hostDaemonOnlineRpcCommandSchema.pathPolicy":
+    "host.read_file may constrain requested and canonical paths for root-bound current filesystem reads; absence preserves ordinary explicit file access.",
   "hostDaemonOnlineRpcCommandSchema.requirement":
     "provider installation status omits requirement for general compatibility and names one only when checking a specific operation.",
   "hostDaemonOnlineRpcCommandSchema.rootPath":
@@ -1034,7 +1036,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(190);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(191);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

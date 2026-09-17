@@ -12,7 +12,10 @@ import { cors } from "hono/cors";
 import type { ServerAppDeps } from "./types.js";
 import { ApiError, errorToResponse } from "./errors.js";
 import { registerEnvironmentRoutes } from "./routes/environments.js";
-import { registerFileRoutes } from "./routes/files.js";
+import {
+  registerFileRoutes,
+  registerFilePreviewContentRoutes,
+} from "./routes/files.js";
 import { registerHostRoutes } from "./routes/hosts.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerThreadSectionRoutes } from "./routes/thread-sections.js";
@@ -613,6 +616,7 @@ export function createApp(
   // Bridge runtime-config assembly to plugin skills + context (§4.4).
   setPluginAgentContributions(pluginService);
   const publicApi = new Hono();
+  const filePreviewLeases = registerFilePreviewContentRoutes(publicApi, deps);
   publicApi.use("*", async (context, next) => {
     if (PLUGIN_WIRE_HTTP_PATH.test(context.req.path)) {
       return next();
@@ -634,7 +638,7 @@ export function createApp(
   });
   registerProjectRoutes(publicApi, deps);
   registerThreadSectionRoutes(publicApi, deps);
-  registerFileRoutes(publicApi, deps);
+  registerFileRoutes(publicApi, deps, filePreviewLeases);
   registerHostRoutes(publicApi, deps, pluginService);
   registerDesktopBrowserRoutes(publicApi, deps);
   registerTerminalRoutes(publicApi, deps);

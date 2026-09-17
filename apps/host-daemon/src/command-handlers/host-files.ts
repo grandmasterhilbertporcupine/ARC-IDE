@@ -192,6 +192,11 @@ export async function readHostFile(
   assertAbsoluteHostDiskPathCommand(command);
 
   if (command.ref !== undefined) {
+    if (command.pathPolicy !== undefined)
+      throw new CommandDispatchError(
+        "invalid_path",
+        "pathPolicy is only available for current filesystem reads",
+      );
     if (command.rootPath === undefined) {
       throw new CommandDispatchError(
         "invalid_path",
@@ -214,6 +219,9 @@ export async function readHostFile(
     resolvedPath: command.path,
     resultPath: command.path,
     ...(command.rootPath !== undefined ? { rootPath: command.rootPath } : {}),
+    ...(command.pathPolicy !== undefined
+      ? { pathPolicy: command.pathPolicy }
+      : {}),
   });
 }
 

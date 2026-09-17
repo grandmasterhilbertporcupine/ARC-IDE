@@ -261,8 +261,16 @@ describe("directory native runtime and shared scheduler", () => {
     },
   );
   it("runs bounded declared delegations serially and retains each assigned writer snapshot", async () => {
+    const started = performance.now();
+    const phases: {
+      nodeId: string;
+      iteration: number;
+      kind: string;
+      elapsedMs: number;
+    }[] = [];
     const run = fixture({
       assignments: ["alice", "bob"],
+      onPhase: (phase) => phases.push(phase),
       update(team) {
         for (const id of ["alice", "bob"]) {
           team.members.push({ ...team.members[0], id });
@@ -295,21 +303,47 @@ describe("directory native runtime and shared scheduler", () => {
         });
       },
     });
-    await run.execute();
-    expect(run.calls.workerStarts).toBe(4);
-    expect(run.calls.mainStarts).toBe(1);
-    const workers = run.store
-      .completionEffects(run.compiled.definition.runId)
-      .filter(
-        (effect) =>
-          run.compiled.nodes[runtimeNodeKey(effect.request)].kind === "agent",
+    const setupMs = performance.now() - started;
+    try {
+      await run.execute();
+      expect(run.calls.workerStarts).toBe(4);
+      expect(run.calls.mainStarts).toBe(1);
+      const workers = run.store
+        .completionEffects(run.compiled.definition.runId)
+        .filter(
+          (effect) =>
+            run.compiled.nodes[runtimeNodeKey(effect.request)].kind === "agent",
+        );
+      expect(workers).toHaveLength(4);
+      expect(
+        new Set(workers.map((effect) => effect.workerBinding?.workspace.path))
+          .size,
+      ).toBe(4);
+      expect(
+        [...run.jobs.values()].filter((job) => job.record.state !== "terminal"),
+      ).toEqual([]);
+      expect(
+        run.events.filter((event) => event.type === "turn/completed"),
+      ).toHaveLength(4);
+      expect(pendingOwnedValidationRequests(run.db)).toEqual([]);
+    } finally {
+      fixtures.splice(fixtures.indexOf(run), 1);
+      const cleanupStarted = performance.now();
+      await run.close();
+      const cleanupMs = performance.now() - cleanupStarted;
+      console.info(
+        JSON.stringify({
+          test: "bounded-delegation-phases",
+          setupMs,
+          phases,
+          calls: run.calls,
+          cleanupMs,
+          totalMs: performance.now() - started,
+        }),
       );
-    expect(workers).toHaveLength(4);
-    expect(
-      new Set(workers.map((effect) => effect.workerBinding?.workspace.path))
-        .size,
-    ).toBe(4);
-  });
+      expect(run.db.open).toBe(false);
+    }
+  }, 60_000);
   it("does not settle a mismatched scan while another scan in the same pass is still running", async () => {
     const run = fixture();
     const source = run.compiled.workflow.steps.find(

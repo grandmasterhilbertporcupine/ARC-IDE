@@ -53,6 +53,12 @@ export function createDirectoryRuntimeFixture(
     autonomy?: "guided" | "collaborative" | "autonomous";
     update?: (team: TeamDefinition) => void;
     assignments?: string[];
+    onPhase?: (phase: {
+      nodeId: string;
+      iteration: number;
+      kind: string;
+      elapsedMs: number;
+    }) => void;
   } = {},
 ) {
   const definition = directoryDefinitionFixture(
@@ -624,8 +630,16 @@ export function createDirectoryRuntimeFixture(
             throw new Error("Unadmitted agent");
           },
           async step(nodeId, iteration) {
+            const started = performance.now();
             const request = admit(nodeId, iteration);
-            const observation = await settle(request);
+            const observation = await settle(request).finally(() =>
+              options.onPhase?.({
+                nodeId,
+                iteration,
+                kind: compiled.nodes[runtimeNodeKey(request)].kind,
+                elapsedMs: performance.now() - started,
+              }),
+            );
             if (!("receipt" in observation))
               throw new Error("Directory stage is waiting for a user decision");
             if (observation.state !== "succeeded")

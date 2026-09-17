@@ -38,6 +38,10 @@ import { runtimeNodeKey } from "./compiler.js";
 import type { AddressedComponent } from "./addressed-composition.js";
 import { preserveAddressedVerification } from "./addressed-continuation-graph.js";
 import {
+  compositionAllowedByPolicy,
+  sealCompositionAuthorization,
+} from "./composition-authorization.js";
+import {
   addressedRepairIdentities,
   stabilizeAddressedRepairStages,
 } from "./addressed-repair-identity.js";
@@ -60,6 +64,24 @@ function retainedDefinition(store: ArcRunStore, runId: string) {
     throw new AgentStoreError(
       "addressed_continuation_unsupported",
       "Use a new conversation to address agents after a manually started run.",
+    );
+  if (
+    !compositionAllowedByPolicy({
+      projectId: compiled.definition.request.projectId,
+      team: compiled.definition.team,
+      members: compiled.definition.members,
+      policy: compiled.definition.policy,
+      ...(compiled.definition.compositionAuthorization === undefined
+        ? {}
+        : {
+            compositionAuthorization:
+              compiled.definition.compositionAuthorization,
+          }),
+    })
+  )
+    throw new AgentStoreError(
+      "team_restricted",
+      "The retained addressed composition is outside its pinned allowed teams",
     );
   return { ...current, compiled };
 }
@@ -301,30 +323,59 @@ export function createAddressedContinuationService(
   ) {
     const root = await environment(item, current);
     const before = current.compiled.definition;
-    const inherited = { revision: before.team, members: before.members };
+    const {
+      compositionAuthorization: previousAuthorization,
+      ...previousDefinition
+    } = before;
+    const inherited: AddressedComponent = {
+      revision: before.team,
+      members: before.members,
+      ...(previousAuthorization === undefined
+        ? {}
+        : { compositionAuthorization: previousAuthorization }),
+    };
     let selected = inherited;
     if (
       item.composition !== null &&
       runtimeHash(item.composition) !== runtimeHash(inherited)
     ) {
       const proposed = item.composition;
+      if (
+        before.policy.restrictedTeams !== null &&
+        (previousAuthorization === undefined ||
+          proposed.compositionAuthorization === undefined)
+      )
+        throw new AgentStoreError(
+          "composition_authorization_missing",
+          "Changing recipients under team restrictions requires resolved origin records for both compositions. Start a fresh conversation to resolve and verify these published recipients.",
+        );
       const team = {
         teamId: proposed.revision.teamId,
         revision: proposed.revision.revision,
       };
       const projected =
-        before.schemaVersion === 3
+        previousDefinition.schemaVersion === 3
           ? compileArcOrchestratedRun({
-              ...before,
+              ...previousDefinition,
               team: proposed.revision,
               members: proposed.members,
-              request: { ...before.request, team },
+              ...(proposed.compositionAuthorization === undefined
+                ? {}
+                : {
+                    compositionAuthorization: proposed.compositionAuthorization,
+                  }),
+              request: { ...previousDefinition.request, team },
             })
           : compileArcDirectoryRun({
-              ...before,
+              ...previousDefinition,
               team: proposed.revision,
               members: proposed.members,
-              request: { ...before.request, team },
+              ...(proposed.compositionAuthorization === undefined
+                ? {}
+                : {
+                    compositionAuthorization: proposed.compositionAuthorization,
+                  }),
+              request: { ...previousDefinition.request, team },
             });
       const finalReviewIds = [
         ...new Set(
@@ -356,6 +407,18 @@ export function createAddressedContinuationService(
           return { checkNodeId, reviewNodeId };
         }),
       );
+      if (
+        previousAuthorization !== undefined &&
+        proposed.compositionAuthorization !== undefined
+      )
+        selected.compositionAuthorization = sealCompositionAuthorization(
+          item.input.projectId,
+          { team: selected.revision, members: selected.members },
+          [
+            ...previousAuthorization.origins,
+            ...proposed.compositionAuthorization.origins,
+          ],
+        );
     }
     for (const member of Object.values(selected.members))
       agents.assignedSkills.resolve(member.definition.metadata.skills ?? []);
@@ -378,10 +441,13 @@ export function createAddressedContinuationService(
       invocation: null,
     };
     const base = {
-      ...before,
+      ...previousDefinition,
       runId: item.successorRunId,
       team: selected.revision,
       members: selected.members,
+      ...(selected.compositionAuthorization === undefined
+        ? {}
+        : { compositionAuthorization: selected.compositionAuthorization }),
       createdAt: item.createdAt,
     };
     if (before.schemaVersion === 3 && root.schemaVersion === 3) {
@@ -544,6 +610,24 @@ export function createAddressedContinuationService(
         retainedCompiled.definition.schemaVersion === 3
           ? compiledOrchestratedRunSchema.parse(retainedCompiled)
           : compiledDirectoryRunSchema.parse(retainedCompiled);
+      if (
+        !compositionAllowedByPolicy({
+          projectId: item.input.projectId,
+          team: compiled.definition.team,
+          members: compiled.definition.members,
+          policy: compiled.definition.policy,
+          ...(compiled.definition.compositionAuthorization === undefined
+            ? {}
+            : {
+                compositionAuthorization:
+                  compiled.definition.compositionAuthorization,
+              }),
+        })
+      )
+        throw new AgentStoreError(
+          "team_restricted",
+          "The queued addressed composition is outside its pinned allowed teams",
+        );
       const key = {
         predecessorWorkflowRunId: current.summary.workflowRunId,
         operationId: item.input.operationId,

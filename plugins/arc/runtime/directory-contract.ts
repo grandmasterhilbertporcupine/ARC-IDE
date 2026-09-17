@@ -6,6 +6,7 @@ import {
 } from "../host-directory-contract.js";
 import { resolvedRunPolicySchema } from "../policy/contract.js";
 import { teamRevisionSchema } from "../teams/contract.js";
+import { compositionAuthorizationSchema } from "./composition-authorization.js";
 import {
   runAgentSnapshotSchema,
   runIdSchema,
@@ -50,6 +51,7 @@ export const directoryRunDefinitionSchema = z
     source: directoryStateSchema,
     team: teamRevisionSchema,
     members: z.record(z.string().min(1).max(200), runAgentSnapshotSchema),
+    compositionAuthorization: compositionAuthorizationSchema.optional(),
     policy: resolvedRunPolicySchema,
     completion: orchestratorCompletionSchema,
     createdAt: z.number().int().nonnegative(),

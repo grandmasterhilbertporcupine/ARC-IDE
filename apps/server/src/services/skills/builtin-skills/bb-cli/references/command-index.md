@@ -267,7 +267,6 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb browser capture`
 - `bb browser watch`
 
-
 ### Managed previews and native browser inspection
 
 `bb preview show|configure|start|stop|restart|logs --project <id>` manages the project's recorded preview terminal. Configure requires explicit host, absolute cwd, and launch command; it saves without executing. `bb guide browser` documents the workflow and remote-host limitations.
@@ -276,3 +275,5 @@ Unconfirmed cleanup blocks replacement. After inspecting or stopping the old pro
 
 `bb browser targets <lease-id>` lists page target IDs for existing native control. `bb browser evaluate <lease-id> --expression <javascript> [--target <id>] [--timeout-ms <ms>]` inspects or tests that page through scoped Electron CDP, including Windows. Supply the same explicit host/instance/generation/thread flags as the acquire operation; run on the selected browser host. Never expose connection credentials. Release the lease when done.
 For live HTML inspection, persist a browser tab with `htmlSource:{hostId,rootPath,filePath}` using `bb thread tabs set`, preserving other tabs and the revision returned by `tabs show`. The desktop owns scoped lease creation and renewal when selected. See `bb guide browser` for the descriptor and native capture/evaluate workflow.
+
+File-preview scripts can read permitted assets inside the selected root without credentials while their lease is live. Keep that root limited to intended preview content. Hidden segments, private-key extensions and escaping aliases are denied. HTML, SVG and XML have opaque origins; asset access never authorizes ARC API requests. Apps needing normal cookies, storage or service workers should use managed localhost Preview. Visible Preview controls refresh external CLI/SDK status within five seconds, including stopped/disconnected states; hidden panels do not poll.

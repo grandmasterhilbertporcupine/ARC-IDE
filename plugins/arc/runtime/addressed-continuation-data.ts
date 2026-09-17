@@ -9,11 +9,13 @@ import { teamRevisionSchema } from "../teams/contract.js";
 import { runAgentSnapshotSchema } from "./definition.js";
 import type { AddressedComponent } from "./addressed-composition.js";
 import { addressedFollowupSchema } from "./addressed-continuation-contract.js";
+import { compositionAuthorizationSchema } from "./composition-authorization.js";
 
 const compositionSchema = z
   .object({
     revision: teamRevisionSchema,
     members: z.record(z.string(), runAgentSnapshotSchema),
+    compositionAuthorization: compositionAuthorizationSchema.optional(),
   })
   .strict();
 

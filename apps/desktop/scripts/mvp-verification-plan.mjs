@@ -1,0 +1,109 @@
+const task = (id, name, filters, files = []) => ({
+  id,
+  args: [
+    "exec",
+    "turbo",
+    "run",
+    name,
+    ...filters.map((filter) => `--filter=${filter}`),
+    "--concurrency=1",
+    "--output-logs=new-only",
+    ...(name === "test" ? ["--", ...files, "--maxWorkers=1"] : []),
+  ],
+});
+
+export const sourceVerificationPlan = [
+  task("format", "verify:mvp:format", ["@bb/desktop"]),
+  task("types", "typecheck", [
+    "bb-plugin-arc",
+    "bb-plugin-workflows",
+    "@bb/app",
+    "@bb/server",
+    "@bb/host-daemon",
+    "@bb/host-daemon-contract",
+    "@bb/desktop",
+    "@bb/desktop-contract",
+  ]),
+  task("arc", "test", ["bb-plugin-arc"]),
+  task("workflows", "test", ["bb-plugin-workflows"]),
+  task("desktop", "test", ["@bb/desktop", "@bb/desktop-contract"]),
+  task("daemon-contract", "test", ["@bb/host-daemon-contract"]),
+  task(
+    "server-preview-security",
+    "test",
+    ["@bb/server"],
+    [
+      "test/security/api-origin-guard.test.ts",
+      "test/security/browser-websocket-origin.test.ts",
+      "test/security/file-preview-boundary.test.ts",
+      "test/security/raw-file-boundary.test.ts",
+      "test/hosts/untrusted-content-headers.test.ts",
+      "test/files/host-file-routes.test.ts",
+      "test/hosts/daemon-file-response.test.ts",
+      "test/services/project-preview.test.ts",
+      "test/desktop-browsers.test.ts",
+    ],
+  ),
+  task(
+    "daemon-files-preview",
+    "test",
+    ["@bb/host-daemon"],
+    [
+      "src/command-handlers/host-files.test.ts",
+      "src/command-handlers/file-read-path-policy.test.ts",
+      "src/terminals/preview-probe.test.ts",
+      "src/desktop-browser-broker.test.ts",
+      "src/terminals/windows-conpty.test.ts",
+    ],
+  ),
+  task(
+    "renderer-preview",
+    "test",
+    ["@bb/app"],
+    [
+      "src/hooks/usePreviewFeedbackDraft.test.tsx",
+      "src/hooks/queries/host-file-preview-query.test.tsx",
+      "src/components/secondary-panel/ProjectPreviewControls.test.tsx",
+      "src/components/secondary-panel/NativeHtmlPreview.test.tsx",
+      "src/components/secondary-panel/FilePreview.test.tsx",
+      "src/components/settings/UpdatesSettingsSection.test.tsx",
+    ],
+  ),
+  task("native-processes", "test", ["@bb/domain", "@bb/process-utils"]),
+  task(
+    "native-watch",
+    "test",
+    ["@bb/host-watcher"],
+    ["test/windows-watch.test.ts"],
+  ),
+  task(
+    "native-cleanup",
+    "test",
+    ["@bb/config"],
+    ["test/windows-verified-process-stop.test.ts"],
+  ),
+  task(
+    "provider-onboarding",
+    "test",
+    [
+      "bb-plugin-provider-codex",
+      "bb-plugin-provider-claude-code",
+      "bb-plugin-provider-pi",
+      "bb-plugin-provider-acp",
+    ],
+    [
+      "src/bridge/codex-login.test.ts",
+      "src/bridge/provider-maintenance.test.ts",
+      "src/agents.test.ts",
+      "src/probe-capabilities.test.ts",
+    ],
+  ),
+];
+
+export const packagedVerificationPlan = [
+  task("installer-options", "test:installer-options", ["@bb/desktop"]),
+  task("windows", "smoke:windows", ["@bb/desktop"]),
+  task("team-ui", "smoke:team-ui", ["@bb/desktop"]),
+  task("visual-teams", "smoke:visual-teams", ["@bb/desktop"]),
+  task("preview-security", "smoke:preview-security", ["@bb/desktop"]),
+];

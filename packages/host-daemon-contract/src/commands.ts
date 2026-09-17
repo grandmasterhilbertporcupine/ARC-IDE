@@ -2,6 +2,7 @@ import {
   desktopBrowserCommandSchemas,
   desktopBrowserResultSchemas,
 } from "./desktop-browser.js";
+import { hostReadFilePathPolicySchema } from "./file-read-path-policy.js";
 import {
   availableModelSchema,
   discoveredWorkspacePropertiesSchema,
@@ -427,6 +428,7 @@ const hostReadFileCommandSchema = z
     path: z.string().min(1),
     rootPath: z.string().min(1).optional(),
     ref: z.string().min(1).optional(),
+    pathPolicy: hostReadFilePathPolicySchema.optional(),
   })
   .superRefine((command, context) => {
     if (command.ref !== undefined && command.rootPath === undefined) {
@@ -435,6 +437,20 @@ const hostReadFileCommandSchema = z
         path: ["rootPath"],
         message: "rootPath is required when ref is set",
       });
+    }
+    if (command.pathPolicy !== undefined) {
+      if (command.rootPath === undefined)
+        context.addIssue({
+          code: "custom",
+          path: ["rootPath"],
+          message: "rootPath is required when pathPolicy is set",
+        });
+      if (command.ref !== undefined)
+        context.addIssue({
+          code: "custom",
+          path: ["pathPolicy"],
+          message: "pathPolicy is only available for current filesystem reads",
+        });
     }
   });
 

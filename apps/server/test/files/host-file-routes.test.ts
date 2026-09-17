@@ -283,6 +283,18 @@ describe("host file routes", () => {
           type: "host.read_file",
           path: "/notes/report.html",
           rootPath: "/notes",
+          pathPolicy: {
+            denyDotfiles: true,
+            deniedExtensions: [
+              ".pem",
+              ".key",
+              ".p12",
+              ".pfx",
+              ".p8",
+              ".jks",
+              ".keystore",
+            ],
+          },
         },
       ]);
     });

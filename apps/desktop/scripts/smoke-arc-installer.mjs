@@ -8,6 +8,7 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  unlink,
   writeFile,
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -15,6 +16,15 @@ import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
 import { z } from "zod";
 import { requireWithin, runSmoke } from "./smoke-arc-windows.mjs";
+import {
+  assertCurrentSource,
+  assertPayload,
+  loadReleaseBuild,
+  readJson,
+  verifyPackagedReceipt,
+  verifyReceiptLogs,
+  writeJson,
+} from "./release-provenance.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repository = resolve(scriptDirectory, "../../..");
@@ -342,6 +352,46 @@ export async function runInstallerSmoke(installer, options = {}) {
   const guid = config.nsis.guid ?? installerGuid(config.appId);
   installer = resolve(installer);
   await access(installer);
+  const release = options.releaseManifest
+    ? dirname(resolve(options.releaseManifest))
+    : null;
+  const frozen = release ? await loadReleaseBuild(release) : null;
+  let packagedVerificationSha256 = null;
+  if (frozen) {
+    assert(
+      equalPath(options.releaseManifest, join(release, "release-build.json")),
+      "Expected the exact release-build.json manifest.",
+    );
+    assert(
+      !options.upgradeInstaller,
+      "A release receipt requires a same-build install and reinstall; cross-version tests remain separate.",
+    );
+    assert(
+      equalPath(
+        installer,
+        join(release, `ARC-${frozen.build.version}-x64.exe`),
+      ),
+      "Installer path differs from the frozen release build.",
+    );
+    for (const name of ["installer-verification.json", "installer-result.json"])
+      await unlink(join(release, name)).catch((error) => {
+        if (error.code !== "ENOENT") throw error;
+      });
+    await assertCurrentSource(repository, frozen.source);
+    await assertPayload(join(release, "win-unpacked"), frozen.payload);
+    const packagedReceipt = verifyPackagedReceipt(
+      await readJson(join(release, "packaged-verification.json")),
+      frozen.buildSha256,
+      frozen.payload.digest,
+    );
+    await verifyReceiptLogs(
+      join(release, "verification-logs"),
+      packagedReceipt,
+    );
+    packagedVerificationSha256 = await hashFile(
+      join(release, "packaged-verification.json"),
+    );
+  }
   const windows = Object.entries(process.env).find(
     ([key]) => key.toUpperCase() === "SYSTEMROOT",
   )?.[1];
@@ -376,7 +426,10 @@ export async function runInstallerSmoke(installer, options = {}) {
     if (options.requireSignature) requireValidSignature(metadata);
     return { path: file, sha256: await hashFile(file), ...metadata };
   };
-  const baseline = await inspectInstaller(installer);
+  const baseline = await inspectInstaller(
+    installer,
+    frozen?.build.version ?? null,
+  );
   const nextInstaller = options.upgradeInstaller
     ? resolve(options.upgradeInstaller)
     : installer;
@@ -456,6 +509,10 @@ export async function runInstallerSmoke(installer, options = {}) {
   console.log(`ARC installer smoke artifacts: ${root}`);
   try {
     assertSafeInstallationState(await query(), guid);
+    assert(
+      (await hashFile(installer)) === baseline.sha256,
+      "Installer bytes changed before installation.",
+    );
     await runNsis(installer, nsisArguments(installation), temporary, log);
     assertSafeInstallationState(await query(), guid, installation);
     installed = true;
@@ -463,6 +520,13 @@ export async function runInstallerSmoke(installer, options = {}) {
       join(installation, "ARC IDE.exe"),
       baseline.version,
     );
+    if (frozen) {
+      const payload = await assertPayload(installation, frozen.payload, true);
+      report.installedPayloadDigest = payload.digest;
+      check(
+        "Installed payload matches every immutable file in the frozen release build",
+      );
+    }
     requireSameSnapshot(
       preservedProfiles,
       await snapshotProfiles(initial.profiles),
@@ -487,16 +551,26 @@ export async function runInstallerSmoke(installer, options = {}) {
       `${JSON.stringify(first, null, 2)}\n`,
     );
     smokeArtifacts = requireWithin(root, z.string().parse(first.artifacts));
+    if (frozen) await assertPayload(installation, frozen.payload, true);
     report.projectId = first.projectId;
     report.smokeArtifacts = smokeArtifacts;
     const beforeReinstall = await snapshotProfiles([smokeArtifacts]);
     assertSafeInstallationState(await query(), guid, installation);
+    assert(
+      (await hashFile(nextInstaller)) === next.sha256,
+      "Installer bytes changed before reinstallation.",
+    );
     await runNsis(nextInstaller, nsisArguments(installation), temporary, log);
     assertSafeInstallationState(await query(), guid, installation);
     report.upgradedExecutable = await inspectInstaller(
       join(installation, "ARC IDE.exe"),
       next.version,
     );
+    if (frozen) {
+      const payload = await assertPayload(installation, frozen.payload, true);
+      report.reinstalledPayloadDigest = payload.digest;
+      check("Reinstalled payload matches the same frozen release build");
+    }
     requireSameSnapshot(
       beforeReinstall,
       await snapshotProfiles([smokeArtifacts]),
@@ -529,6 +603,7 @@ export async function runInstallerSmoke(installer, options = {}) {
     check(
       `${options.upgradeInstaller ? `Cross-version upgrade ${baseline.version} to ${next.version}` : `Same-version reinstall ${baseline.version}`} preserved the exact QA project, data and host workspace binding`,
     );
+    if (frozen) await assertPayload(installation, frozen.payload, true);
     beforeUninstall = await snapshotProfiles([smokeArtifacts]);
     await uninstall();
     requireSameSnapshot(
@@ -569,6 +644,32 @@ export async function runInstallerSmoke(installer, options = {}) {
     );
     console.log(JSON.stringify(report, null, 2));
   }
+  if (frozen && report.status === "passed") {
+    await assertCurrentSource(repository, frozen.source);
+    const current = await loadReleaseBuild(release);
+    assert(
+      current.buildSha256 === frozen.buildSha256,
+      "Release build changed during installer verification.",
+    );
+    assert(
+      (await hashFile(join(release, "packaged-verification.json"))) ===
+        packagedVerificationSha256,
+      "Packaged verification receipt changed during installer verification.",
+    );
+    await writeJson(join(release, "installer-result.json"), report);
+    await writeJson(join(release, "installer-verification.json"), {
+      schemaVersion: 1,
+      kind: "installer",
+      status: "passed",
+      buildSha256: frozen.buildSha256,
+      payloadDigest: frozen.payload.digest,
+      installerSha256: baseline.sha256,
+      installedPayloadDigest: report.installedPayloadDigest,
+      reinstalledPayloadDigest: report.reinstalledPayloadDigest,
+      packagedVerificationSha256,
+      reportSha256: await hashFile(join(release, "installer-result.json")),
+    });
+  }
   return report;
 }
 
@@ -581,12 +682,13 @@ if (
       installer: { type: "string" },
       "upgrade-installer": { type: "string" },
       "require-signature": { type: "boolean" },
+      "release-manifest": { type: "string" },
       help: { type: "boolean", short: "h" },
     },
   });
   if (values.help)
     console.log(
-      "Usage: node apps/desktop/scripts/smoke-arc-installer.mjs [--installer C:\\path\\ARC-baseline-x64.exe] [--upgrade-installer C:\\path\\ARC-next-x64.exe] [--require-signature]\nDefaults to the desktop package's current version. Refuses an existing ARC installation, shortcut or running process. Uses a new workspace .arc-verification directory; performs silent per-user install, reinstall or explicit cross-version upgrade, and uninstall. Preserves all QA projects and verification artifacts. Public release verification must use --require-signature.",
+      "Usage: node apps/desktop/scripts/smoke-arc-installer.mjs [--installer C:\\path\\ARC-baseline-x64.exe] [--upgrade-installer C:\\path\\ARC-next-x64.exe] [--require-signature] [--release-manifest C:\\path\\release-build.json]\nDefaults to the desktop package's current version. Refuses an existing ARC installation, shortcut or running process. Uses a new workspace .arc-verification directory; performs silent per-user install, reinstall or explicit cross-version upgrade, and uninstall. Preserves all QA projects and verification artifacts. --release-manifest verifies all installed payload bytes against a frozen build and emits a receipt only after lifecycle success. Public signed-release verification must use --require-signature.",
     );
   else {
     const desktopPackage = z
@@ -605,6 +707,7 @@ if (
       {
         upgradeInstaller: values["upgrade-installer"],
         requireSignature: values["require-signature"],
+        releaseManifest: values["release-manifest"],
       },
     ).catch((error) => {
       console.error(error);

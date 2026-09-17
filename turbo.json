@@ -1,6 +1,58 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": [
+    "NODE_OPTIONS",
+    "UV_THREADPOOL_SIZE",
+    "MAX_JOBS",
+    "CMAKE_BUILD_PARALLEL_LEVEL",
+    "npm_config_jobs",
+    "NPM_CONFIG_JOBS"
+  ],
   "tasks": {
+    "@bb/desktop#verify:mvp:format": {
+      "cache": false,
+      "outputs": [],
+      "passThroughEnv": ["*"]
+    },
+    "@bb/desktop#release:package": {
+      "dependsOn": ["@bb/desktop#build", "@bb/desktop#generate:installer-art"],
+      "cache": false,
+      "outputs": ["release/**"],
+      "passThroughEnv": ["*"]
+    },
+    "@bb/desktop#test:installer-options": {
+      "cache": false,
+      "outputs": [],
+      "passThroughEnv": ["ARC_REQUIRE_NSIS_TESTS", "ELECTRON_BUILDER_CACHE"]
+    },
+    "@bb/desktop#verify:mvp": {
+      "cache": false,
+      "outputs": [],
+      "passThroughEnv": ["*"]
+    },
+    "@bb/desktop#verify:mvp:packaged": {
+      "cache": false,
+      "outputs": ["release/packaged-verification.json"],
+      "passThroughEnv": ["*"]
+    },
+    "@bb/desktop#release:build": {
+      "cache": false,
+      "outputs": ["release/**"],
+      "passThroughEnv": ["*"]
+    },
+    "@bb/desktop#release:verify-installer": {
+      "cache": false,
+      "outputs": [
+        "release/installer-verification.json",
+        "release/installer-result.json"
+      ],
+      "passThroughEnv": ["*"]
+    },
+    "@bb/desktop#smoke:preview-security": {
+      "cache": false,
+      "outputs": [],
+      "passThroughEnv": ["*"]
+    },
     "@bb/desktop#generate:installer-art": {
       "inputs": [
         "scripts/generate-installer-art.mjs",
@@ -54,7 +106,8 @@
       "outputs": [
         "release/*.json",
         "release/*.sha256",
-        "release/*.install.txt"
+        "release/*.install.txt",
+        "release/SHA256SUMS"
       ],
       "passThroughEnv": ["*"]
     },
@@ -272,7 +325,13 @@
     },
     "@bb/desktop#build": {
       "dependsOn": ["bb-app#build"],
-      "env": ["BB_DESKTOP_RELEASE_CHANNEL", "ARC_UPDATE_BASE_URL"],
+      "env": [
+        "BB_DESKTOP_RELEASE_CHANNEL",
+        "ARC_UPDATE_BASE_URL",
+        "BB_DESKTOP_COMMIT",
+        "BB_DESKTOP_BUILD_DATE",
+        "GITHUB_SHA"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/bb-app/app/**",

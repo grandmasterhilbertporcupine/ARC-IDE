@@ -884,6 +884,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Configure host, absolute working directory, command and optional URL without executing it",
           "Start, stop or restart only the project's recorded terminal; inspect logs and detected URLs",
           "Renew scoped HTML preview leases and observe loaded asset changes with experimental_refreshPreview",
+          "Live lease assets allow credentialless reads within the fixed root; hidden paths, private-key files and escaping aliases are denied",
+          "HTML, SVG and XML remain isolated from ARC APIs; use managed localhost for ordinary cookies, storage or service workers",
         ],
         apiSymbols: [
           "ExperimentalPreviewsArea",

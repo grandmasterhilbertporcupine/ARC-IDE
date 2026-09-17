@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ownedStepRefSchema } from "bb-plugin-workflows/owned-contract";
 import { resolvedRunPolicySchema } from "../policy/contract.js";
 import { teamRevisionSchema } from "../teams/contract.js";
+import { compositionAuthorizationSchema } from "./composition-authorization.js";
 import {
   gitOidSchema,
   runAgentSnapshotSchema,
@@ -62,6 +63,7 @@ export const graphRunDefinitionSchema = z
     source: runSourceSchema,
     team: teamRevisionSchema,
     members: z.record(memberId, runAgentSnapshotSchema),
+    compositionAuthorization: compositionAuthorizationSchema.optional(),
     policy: resolvedRunPolicySchema,
     createdAt: z.number().int().nonnegative(),
   })

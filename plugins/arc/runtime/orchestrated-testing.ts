@@ -56,6 +56,7 @@ export function orchestratedDefinitionFixture(
 
 export function createOrchestratedTestRun(
   definition = orchestratedDefinitionFixture(),
+  initialize?: (db: Database.Database) => void,
 ) {
   const db = new Database(":memory:");
   db.pragma("foreign_keys = ON");
@@ -67,6 +68,7 @@ export function createOrchestratedTestRun(
       ...collaborationMigrations,
     ].join(";\n"),
   );
+  initialize?.(db);
   const compiled = compileArcOrchestratedRun(definition);
   const store = createArcRunStore(db);
   store.reserve(compiled);

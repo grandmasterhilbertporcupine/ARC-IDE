@@ -12,6 +12,10 @@ import {
 } from "./collaboration-service.js";
 import { boundedReadInputSchema } from "../host-reading-contract.js";
 import type { AddressedComponent } from "./addressed-composition.js";
+import {
+  compositionAllowedByPolicy,
+  validateCompositionAuthorization,
+} from "./composition-authorization.js";
 import { createAddressedContinuationService } from "./addressed-continuation.js";
 import type { AgentActor } from "../service.js";
 import { createArcRuntimeAdapter } from "./adapter.js";
@@ -375,6 +379,9 @@ export function createArcRunService(
           runId: `run_${randomUUID()}`,
           team,
           policy,
+          ...(addressed?.compositionAuthorization === undefined
+            ? {}
+            : { compositionAuthorization: addressed.compositionAuthorization }),
           members:
             addressed?.members ??
             Object.fromEntries(
@@ -538,6 +545,26 @@ export function createArcRunService(
             repairer: snapshot(input.repairer),
             createdAt: Date.now(),
           }),
+        );
+    }
+    if (retained.compiled.definition.schemaVersion !== 1) {
+      const definition = retained.compiled.definition;
+      if (
+        !compositionAllowedByPolicy({
+          projectId: definition.request.projectId,
+          team: definition.team,
+          members: definition.members,
+          policy: definition.policy,
+          ...(definition.compositionAuthorization === undefined
+            ? {}
+            : {
+                compositionAuthorization: definition.compositionAuthorization,
+              }),
+        })
+      )
+        throw new AgentStoreError(
+          "team_restricted",
+          "This retained team composition is outside the configured allowed teams",
         );
     }
     if (retained.summary.workflowRunId === null) {
@@ -1204,6 +1231,16 @@ export function createArcRunService(
           "addressed_binding_invalid",
           "The addressed request must identify its exact pinned composition",
         );
+      if (composition.compositionAuthorization === undefined)
+        throw new AgentStoreError(
+          "composition_authorization_missing",
+          "Addressed work requires authorization from its resolved published recipients",
+        );
+      validateCompositionAuthorization(
+        parsed.projectId,
+        { team: composition.revision, members: composition.members },
+        composition.compositionAuthorization,
+      );
       return start(parsed, new AbortController().signal, composition);
     },
     startOrchestratedRun(

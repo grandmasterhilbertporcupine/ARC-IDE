@@ -49,6 +49,15 @@ const pluginsRoot = cachedDirectory(
   join("plugins", "x86-unicode", "WinShell.dll"),
 );
 
+if (
+  process.env.ARC_REQUIRE_NSIS_TESTS === "1" &&
+  (!compilerRoot || !pluginsRoot)
+) {
+  throw new Error(
+    "Required native installer-option verification needs the NSIS compiler and plugins populated by release:build.",
+  );
+}
+
 function run(executable: string, args: string[]): string {
   const result = spawnSync(executable, args, {
     encoding: "utf8",

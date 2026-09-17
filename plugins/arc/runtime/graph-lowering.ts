@@ -22,6 +22,7 @@ import {
   type GraphRuntimeNode,
 } from "./graph-contract.js";
 import { runtimeHash } from "./hash.js";
+import { compositionAllowedByPolicy } from "./composition-authorization.js";
 import { validateDirectoryTeamGraph } from "./directory-graph-validation.js";
 import {
   directoryRunDefinitionSchema,
@@ -241,12 +242,15 @@ export function lowerArcTeamGraph(
       "The source revision changed before the graph was sealed.",
     );
   if (
-    definition.policy.restrictedTeams !== null &&
-    !definition.policy.restrictedTeams.some(
-      (pin) =>
-        pin.teamId === definition.team.teamId &&
-        pin.revision === definition.team.revision,
-    )
+    !compositionAllowedByPolicy({
+      projectId: definition.request.projectId,
+      team: definition.team,
+      members: definition.members,
+      policy: definition.policy,
+      ...(definition.compositionAuthorization === undefined
+        ? {}
+        : { compositionAuthorization: definition.compositionAuthorization }),
+    })
   )
     throw new GraphCompileError(
       "team_restricted",

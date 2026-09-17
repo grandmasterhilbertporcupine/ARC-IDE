@@ -1,4 +1,5 @@
-import path from "node:path";
+import { applyUntrustedContentHeaders } from "../services/untrusted-content-headers.js";
+import { joinHostPath } from "../services/hosts/host-path.js";
 import {
   countProjectSources,
   findOrCreateProjectByLocalPathSource,
@@ -643,7 +644,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: {
           type: "host.read_file",
-          path: path.join(target.path, filePath.relativePath),
+          path: joinHostPath(target.path, filePath.relativePath),
           rootPath: target.path,
         },
       });
@@ -942,11 +943,13 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       context.req.param("id"),
       query.path,
     );
-    const headers = new Headers({
-      "cache-control": ATTACHMENT_CONTENT_CACHE_CONTROL,
-      "content-type": attachment.mimeType ?? "application/octet-stream",
-      etag: attachment.etag,
-    });
+    const headers = applyUntrustedContentHeaders(
+      new Headers({
+        "cache-control": ATTACHMENT_CONTENT_CACHE_CONTROL,
+        "content-type": attachment.mimeType ?? "application/octet-stream",
+        etag: attachment.etag,
+      }),
+    );
     if (
       requestMatchesEntityTag(
         context.req.header("if-none-match"),

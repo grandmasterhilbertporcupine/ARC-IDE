@@ -10,10 +10,12 @@ import type { RunAgentSnapshot } from "./definition.js";
 import { runtimeHash } from "./hash.js";
 import { validateDirectoryTeamGraph } from "./directory-graph-validation.js";
 import { analyzeTeamReviewGrants } from "../teams/review-grants.js";
+import type { CompositionAuthorization } from "./composition-authorization.js";
 
 export type AddressedComponent = {
   revision: TeamRevision;
   members: Record<string, RunAgentSnapshot>;
+  compositionAuthorization?: CompositionAuthorization;
 };
 type Candidate = Extract<TeamNode, { kind: "agent" }>["candidate"];
 type ExportedResult = { candidate: Candidate; dependencies: string[] };

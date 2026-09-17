@@ -1,4 +1,8 @@
 import { randomUUID } from "node:crypto";
+import {
+  isAllowedHostReadRelativePath,
+  type HostReadFilePathPolicy,
+} from "@bb/host-daemon-contract";
 import type { Hono } from "hono";
 import mimeTypes from "mime-types";
 import {
@@ -39,6 +43,18 @@ const NO_STORE_CACHE_CONTROL = "no-store";
 const NOSNIFF_CONTENT_TYPE_OPTIONS = "nosniff";
 const HTML_MIME_TYPE = "text/html";
 const FILE_PREVIEW_TTL_MS = 10 * 60 * 1000;
+const FILE_PREVIEW_PATH_POLICY: HostReadFilePathPolicy = {
+  denyDotfiles: true,
+  deniedExtensions: [
+    ".pem",
+    ".key",
+    ".p12",
+    ".pfx",
+    ".p8",
+    ".jks",
+    ".keystore",
+  ],
+};
 
 interface FilePreviewLease {
   hostId: string;
@@ -138,7 +154,11 @@ async function serveRawFilesystemHtmlFile(
   }
 }
 
-export function registerFileRoutes(app: Hono, deps: AppDeps): void {
+export function registerFileRoutes(
+  app: Hono,
+  deps: AppDeps,
+  previewLeases: Map<string, FilePreviewLease>,
+): void {
   const { get, post } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
@@ -150,7 +170,6 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
 
   const fileRoutes = publicApiRoutes.files;
   const previewRoutes = publicApiRoutes.filePreviews;
-  const previewLeases = new Map<string, FilePreviewLease>();
 
   const resolveHostId = (hostId: string | undefined): string => {
     const resolved = hostId ?? requirePrimaryHostId(deps);
@@ -357,6 +376,7 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
   });
 
   post(fileRoutes.createPreview, (context, payload) => {
+    requirePrivilegedJsonMutation(context);
     const hostId = resolveHostId(payload.hostId);
     if (!isAbsoluteHostPath(payload.rootPath)) {
       throw new ApiError(
@@ -436,21 +456,37 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
       truncated: lease.truncated,
     });
   });
+}
 
-  get(previewRoutes.content, async (context) => {
+export function registerFilePreviewContentRoutes(app: Hono, deps: AppDeps) {
+  const previewLeases = new Map<string, FilePreviewLease>();
+  const { get } = typedRoutes<PublicApiSchema>(app, {
+    onValidationError: (message) =>
+      new ApiError(400, "invalid_request", message),
+  });
+  get(publicApiRoutes.filePreviews.content, async (context) => {
+    if (
+      browserRequestProblem(context, deps) !== null &&
+      (context.req.header("authorization") !== undefined ||
+        context.req.header("cookie") !== undefined)
+    )
+      throw new ApiError(
+        403,
+        "forbidden_origin",
+        "Preview assets do not accept cross-origin credentials",
+        false,
+      );
     const id = context.req.param("id");
     const lease = previewLeases.get(id);
     if (!lease || lease.expiresAtMs <= Date.now()) {
       previewLeases.delete(id);
       throw new ApiError(404, "not_found", "File preview expired", false);
     }
-    const rawPath = context.req.param("filePath").replace(/\\/g, "/");
+    const rawPath = context.req.param("filePath");
     const segments = rawPath.split("/");
     if (
-      rawPath.startsWith("/") ||
-      segments.some(
-        (segment) => segment === "" || segment === "." || segment === "..",
-      )
+      rawPath.includes("\\") ||
+      !isAllowedHostReadRelativePath(rawPath, FILE_PREVIEW_PATH_POLICY)
     ) {
       throw new ApiError(400, "invalid_path", "Invalid preview path", false);
     }
@@ -462,8 +498,11 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
           type: "host.read_file",
           path: joinHostPath(lease.rootPath, ...segments),
           rootPath: lease.rootPath,
+          pathPolicy: FILE_PREVIEW_PATH_POLICY,
         },
       });
+      if (lease.expiresAtMs <= Date.now() || previewLeases.get(id) !== lease)
+        throw new ApiError(404, "not_found", "File preview expired", false);
       const resourcePath = joinHostPath(lease.rootPath, ...segments);
       if (lease.resources.has(resourcePath) || lease.resources.size < 2048)
         lease.resources.set(
@@ -480,9 +519,13 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
         headers.set("content-security-policy", HTML_PREVIEW_CSP);
         headers.set("content-type", HTML_PREVIEW_CONTENT_TYPE);
       }
-      return createDaemonFileContentResponse(result, { headers });
+      const response = createDaemonFileContentResponse(result, { headers });
+      response.headers.set("access-control-allow-origin", "*");
+      response.headers.delete("access-control-allow-credentials");
+      return response;
     } catch (error) {
       return remapDaemonFileRouteError(error);
     }
   });
+  return previewLeases;
 }

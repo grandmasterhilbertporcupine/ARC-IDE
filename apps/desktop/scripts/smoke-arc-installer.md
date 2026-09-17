@@ -16,8 +16,8 @@ The existing `--no-desktop-shortcut` flag forces the desktop choice off. Update 
 keeps the upstream behavior of retaining existing shortcuts, including ones added
 manually, and leaving deleted desktop shortcuts absent. Neither mode launches ARC
 silently unless the existing `--force-run` flag is supplied. Launching from Finish
-works even when both shortcut choices are off. Public automatic updates remain
-disabled.
+works even when both shortcut choices are off. Public update assets remain
+unpublished until the owner renews publishing authorization; stable builds retain their GitHub updater configuration.
 
 Native shortcut regression tests compile the production NSIS include against the
 bundled installer helpers and operate only on temporary links and an owned test
@@ -42,3 +42,5 @@ NSIS runs hidden in per-user mode and only in a new owned directory under `.arc-
 The harness never requests app-data deletion or removes verification artifacts. Cleanup on failure requires registration that proves the exact owned installation. Reports and logs remain under the printed directory.
 
 The default same-version reinstall does not prove cross-version upgrade. Neither mode certifies clean Windows 11, standard-user behavior on a machine without development tools, interactive provider enrollment, all-provider workflows, public update delivery or rollback. Those remain release gates.
+
+For MVP delivery, use `pnpm exec turbo run release:verify-installer --filter=@bb/desktop --concurrency=1` after the shared source/build/packaged gates in [release verification](../../../docs/arc-releases.md). This mode requires the frozen release manifest and packaged receipt. It compares installed and reinstalled runtime files, including `resources/app-update.yml`, against the payload manifest and writes an installer receipt only after the owned lifecycle passes. `release:assets` rejects mismatched installer, payload, source, feed or receipt identities even when version numbers agree. Legacy `smoke:installer` remains available for explicit investigations; its result alone cannot finalize MVP release assets.

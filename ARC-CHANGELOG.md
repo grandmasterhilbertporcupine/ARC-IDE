@@ -1,10 +1,22 @@
 # ARC changelog
 
+## 0.42.10 — local personal build
+
+Public download and publishing remain pending.
+
+- Build and customize visual agent teams with names, colors, model icons/selectors and assigned skills.
+- Keep HTML, SVG and XML file previews isolated from ARC APIs while supporting relative scripts, modules, data and other permitted assets.
+- Refresh visible Preview status after external SDK/CLI operations and reconnections.
+- Authorize addressed team compositions from their exact stored revisions without broadening project permissions.
+- Require serial source and packaged verification, then compare actual installed files with a frozen payload manifest before finalizing installer assets.
+
+This build is unsigned. Consult its accompanying evidence for observed checks and remaining gates; local installation verification does not certify clean-machine operation or cross-version upgrades.
+
 ## 0.42.9
 
-The first GitHub-enabled Windows release.
+The first local Windows build with GitHub updater configuration. Publication was paused before a public release.
 
-- Download ARC directly from its GitHub Releases page.
+- Configure future stable downloads through ARC's GitHub Releases page.
 - Check for stable updates in Settings, download them in the background, and install on restart or quit.
 - Show failed update checks with a retry action and keep ARC's download cache separate.
 - Fix plugin catalog generation during a fresh source installation.

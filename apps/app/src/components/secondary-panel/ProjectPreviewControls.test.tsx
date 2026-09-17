@@ -7,7 +7,12 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  focusManager,
+  onlineManager,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProjectPreviewControls } from "./ProjectPreviewControls";
 import type { ProjectPreview } from "@bb/sdk/browser";
@@ -20,6 +25,7 @@ const mock = vi.hoisted(() => ({
   restart: vi.fn(),
   detach: vi.fn(),
 }));
+const environmentMock = vi.hoisted(() => ({ available: true }));
 vi.mock("@/lib/sdk", () => ({
   sdk: {
     experimental_previews: mock,
@@ -38,7 +44,9 @@ vi.mock("@/lib/sdk", () => ({
 }));
 vi.mock("@/hooks/queries/environment-queries", () => ({
   useEnvironment: () => ({
-    data: { projectId: "project", hostId: "host", path: "C:\\Project" },
+    data: environmentMock.available
+      ? { projectId: "project", hostId: "host", path: "C:\\Project" }
+      : undefined,
   }),
 }));
 vi.mock("@/lib/bb-desktop", () => ({
@@ -58,7 +66,161 @@ const empty: ProjectPreview = {
 };
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
+  focusManager.setFocused(undefined);
+  onlineManager.setOnline(true);
+  environmentMock.available = true;
   for (const value of Object.values(mock)) value.mockReset();
+});
+
+describe("preview visibility polling", () => {
+  function pollingControls(visible = true) {
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+          gcTime: Infinity,
+          refetchOnWindowFocus: false,
+          refetchOnReconnect: false,
+        },
+      },
+    });
+    const navigate = vi.fn();
+    const view = (shown: boolean) => (
+      <QueryClientProvider client={client}>
+        <ProjectPreviewControls
+          environmentId="env"
+          visible={shown}
+          onNavigate={navigate}
+        />
+      </QueryClientProvider>
+    );
+    const rendered = render(view(visible));
+    return {
+      client,
+      navigate,
+      setVisible: (shown: boolean) => rendered.rerender(view(shown)),
+    };
+  }
+  async function advance(milliseconds: number) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(milliseconds);
+    });
+  }
+  const stopped: ProjectPreview = {
+    ...empty,
+    revision: 1,
+    status: "stopped",
+    config: {
+      hostId: "host",
+      cwd: "C:\\Project",
+      command: "npm run dev",
+      url: "",
+    },
+  };
+  const running: ProjectPreview = {
+    ...stopped,
+    status: "running",
+    url: "http://127.0.0.1:3000",
+    terminal: {
+      id: "owned-preview-terminal",
+      threadId: null,
+      environmentId: null,
+      hostId: "host",
+      title: "Project preview",
+      initialCwd: "C:\\Project",
+      cols: 80,
+      rows: 24,
+      status: "running",
+      exitCode: null,
+      closeReason: null,
+      createdAt: 1,
+      updatedAt: 1,
+      lastUserInputAt: null,
+    },
+  };
+
+  it("observes external starts, stops, failures and disconnected recovery every five seconds", async () => {
+    vi.useFakeTimers();
+    mock.get.mockResolvedValue(stopped);
+    const { client, navigate } = pollingControls();
+    await advance(0);
+    expect(mock.get).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("status").textContent).toBe("stopped");
+    const states: ProjectPreview[] = [
+      running,
+      stopped,
+      { ...stopped, status: "failed", error: "Command exited" },
+      { ...stopped, status: "disconnected", error: "Machine unavailable" },
+      running,
+    ];
+    for (const [index, state] of states.entries()) {
+      mock.get.mockResolvedValue(state);
+      await advance(4_999);
+      expect(mock.get).toHaveBeenCalledTimes(index + 1);
+      await advance(1);
+      expect(mock.get).toHaveBeenCalledTimes(index + 2);
+      expect(client.getQueryData(["project-preview", "project"])).toEqual(
+        state,
+      );
+      await advance(0);
+    }
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("stops hidden or unavailable panels and refreshes as soon as they are shown", async () => {
+    vi.useFakeTimers();
+    mock.get.mockResolvedValue(stopped);
+    const { setVisible } = pollingControls(false);
+    await advance(15_000);
+    expect(mock.get).not.toHaveBeenCalled();
+    setVisible(true);
+    await advance(0);
+    expect(mock.get).toHaveBeenCalledTimes(1);
+    setVisible(false);
+    await advance(15_000);
+    expect(mock.get).toHaveBeenCalledTimes(1);
+    mock.get.mockResolvedValue(running);
+    setVisible(true);
+    await advance(0);
+    expect(mock.get).toHaveBeenCalledTimes(2);
+    environmentMock.available = false;
+    setVisible(true);
+    await advance(15_000);
+    expect(mock.get).toHaveBeenCalledTimes(2);
+    expect(
+      screen.queryByRole("region", { name: "Project preview" }),
+    ).toBeNull();
+  });
+
+  it("recovers failed requests and refreshes on refocus and reconnect without waking hidden panels", async () => {
+    vi.useFakeTimers();
+    mock.get.mockRejectedValue(new Error("Server unavailable"));
+    const { client, setVisible } = pollingControls();
+    await advance(0);
+    expect(mock.get).toHaveBeenCalledTimes(1);
+    mock.get.mockResolvedValue(stopped);
+    await advance(5_000);
+    expect(mock.get).toHaveBeenCalledTimes(2);
+    expect(client.getQueryData(["project-preview", "project"])).toEqual(
+      stopped,
+    );
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    await advance(0);
+    expect(mock.get).toHaveBeenCalledTimes(3);
+    onlineManager.setOnline(false);
+    onlineManager.setOnline(true);
+    await advance(0);
+    expect(mock.get).toHaveBeenCalledTimes(4);
+    setVisible(false);
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    onlineManager.setOnline(false);
+    onlineManager.setOnline(true);
+    await advance(10_000);
+    expect(mock.get).toHaveBeenCalledTimes(4);
+  });
 });
 function renderControls() {
   const client = new QueryClient({

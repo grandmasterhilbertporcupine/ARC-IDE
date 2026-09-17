@@ -2,7 +2,11 @@ import { isUtf8 } from "node:buffer";
 import fs from "node:fs/promises";
 import path from "node:path";
 import mimeTypes from "mime-types";
-import type { HostReadFileRelativeDotfilePolicy } from "@bb/host-daemon-contract";
+import {
+  isAllowedHostReadRelativePath,
+  type HostReadFilePathPolicy,
+  type HostReadFileRelativeDotfilePolicy,
+} from "@bb/host-daemon-contract";
 import {
   readGitBlob,
   WorkspaceError,
@@ -41,6 +45,7 @@ interface ReadFileForTransportArgs {
   resolvedPath: string;
   resultPath: string;
   rootPath?: string;
+  pathPolicy?: HostReadFilePathPolicy;
 }
 
 interface ReadRootRelativeFileForTransportArgs {
@@ -192,8 +197,22 @@ async function resolveReadablePath(
 ): Promise<string> {
   const rootPath = args.rootPath;
   if (!rootPath) {
+    if (args.pathPolicy)
+      throw new CommandDispatchError(
+        "invalid_path",
+        "rootPath is required when pathPolicy is set",
+      );
     return args.resolvedPath;
   }
+
+  if (
+    args.pathPolicy &&
+    !isAllowedHostReadRelativePath(
+      path.relative(rootPath, args.resolvedPath),
+      args.pathPolicy,
+    )
+  )
+    throw createMissingTargetError(args.resultPath);
 
   const realRootPath = await resolveRootPathOrThrowMissingPath({
     resultPath: args.resultPath,
@@ -208,6 +227,15 @@ async function resolveReadablePath(
       `Path "${args.resultPath}" escapes read root`,
     );
   }
+
+  if (
+    args.pathPolicy &&
+    !isAllowedHostReadRelativePath(
+      path.relative(realRootPath, realResolvedPath),
+      args.pathPolicy,
+    )
+  )
+    throw createMissingTargetError(args.resultPath);
 
   return realResolvedPath;
 }

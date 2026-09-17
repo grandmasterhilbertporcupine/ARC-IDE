@@ -4,6 +4,10 @@ type ReleaseMeta = {
 };
 
 export const RELEASE_META: Record<string, ReleaseMeta> = {
+  "0.42.10": {
+    date: "September 17, 2026",
+    headline: "Visual teams, isolated Preview and verified local packaging",
+  },
   "0.42.9": {
     date: "September 15, 2026",
     headline: "ARC releases and updates on GitHub",

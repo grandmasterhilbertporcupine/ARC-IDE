@@ -8,6 +8,16 @@ processes; the launcher does not install aliases or change the user's shell.
 
 ## ARC desktop defaults
 
+### MVP Preview boundaries
+
+Visible Preview controls poll every five seconds while the project is available, including stopped and disconnected states. Hidden controls do not poll. Local actions and reconnect/refocus retain immediate refresh behavior.
+
+Static file previews keep the selected absolute root unchanged. Live leases permit credentialless cross-origin GET/HEAD reads of allowed files inside that root; scripts can read those files, so select only intended preview material. Hidden segments and `.key`, `.pem`, `.p12`, `.pfx`, `.p8`, `.jks`, `.keystore` files are denied case-insensitively, including resolved aliases. Expired leases, traversal and outside-root links fail. Asset responses do not authorize lease creation, renewal or other ARC APIs. HTML, SVG, XHTML and XML are sandboxed without same-origin privileges; unfamiliar documents download. Use managed localhost Preview for applications needing ordinary cookies, storage or service workers.
+
+Restricted addressed runs retain the original exact team-revision allowlist. Every composed constituent must be an allowed published project team; standalone agents remain disallowed under that restriction. ARC creates versioned composition authorization from resolved stored revisions and binds it to the project and complete retained team/member snapshots. Continuation and restart validate the binding. This is server-owned metadata with no SDK/CLI input option; caller-supplied authorization is rejected.
+
+### Identity and updates
+
 ARC desktop uses `~/.arc/`, profile `ARC`, application ID `dev.arc.desktop`,
 server port 38986 and daemon port 38987. Source development uses a separate
 checkout directory below `~/.arc-dev/`; read actual URLs from `corepack pnpm dev`.

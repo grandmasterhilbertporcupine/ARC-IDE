@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import type { HostDaemonOnlineRpcResultByType } from "@bb/host-daemon-contract";
 import { ApiError } from "../../errors.js";
+import { applyUntrustedContentHeaders } from "../untrusted-content-headers.js";
 
 const OCTET_STREAM_MIME_TYPE = "application/octet-stream";
 const REVALIDATE_CACHE_CONTROL = "private, no-cache";
@@ -50,7 +51,7 @@ function buildFileContentHeaders(
   if (result.modifiedAtMs !== undefined) {
     headers.set("last-modified", new Date(result.modifiedAtMs).toUTCString());
   }
-  return headers;
+  return applyUntrustedContentHeaders(headers);
 }
 
 function decodeDaemonFileContent(result: DaemonFileReadResult): ArrayBuffer {

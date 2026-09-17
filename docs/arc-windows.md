@@ -4,7 +4,7 @@ ARC targets Windows 11 x64. The current implementation has not passed the public
 
 ## Install and connect a provider
 
-Run `ARC-0.42.9-x64.exe`, choose the installation scope and folder, then choose whether to create a desktop shortcut and add ARC to the Start menu. Both shortcut options start selected and are remembered for that installation. The Finish screen separately offers **Launch ARC**, which works even if you declined both shortcuts. Download the installer from [ARC Releases](https://github.com/grandmasterhilbertporcupine/ARC-IDE/releases/latest). A local unsigned installer has no verified publisher; it is not the signed public release. Uninstalling through Windows Installed apps preserves ARC data and project files.
+Public download is pending. For the locally delivered personal build, compare the supplied checksum and run `ARC-0.42.10-x64.exe`, choose the installation folder, then choose whether to create a desktop shortcut and add ARC to the Start menu. Both shortcut options start selected and are remembered for that installation. The Finish screen separately offers **Launch ARC**, which works even if you declined both shortcuts. A local unsigned installer has no verified publisher; continue only when you trust its source and checksum. Uninstalling through Windows Installed apps preserves ARC data and project files.
 
 ARC bundles Electron, its Node runtime, the local server, host daemon, `bb` CLI and Context model assets. Starting ARC does not require Node on PATH. The complete installed directory is required; copying only `ARC IDE.exe` will not work.
 
@@ -34,17 +34,20 @@ $env:CSC_KEY_PASSWORD = $null
 $env:WIN_CSC_LINK = $null
 $env:WIN_CSC_KEY_PASSWORD = $null
 $env:CSC_IDENTITY_AUTO_DISCOVERY = 'false'
-corepack pnpm exec turbo run dist:windows --filter=@bb/desktop
-Get-FileHash -Algorithm SHA256 'apps/desktop/release/ARC-0.42.9-x64.exe'
+corepack pnpm exec turbo run verify:mvp --filter=@bb/desktop --concurrency=1
+corepack pnpm exec turbo run release:build --filter=@bb/desktop --concurrency=1
+corepack pnpm exec turbo run verify:mvp:packaged --filter=@bb/desktop --concurrency=1
+corepack pnpm exec turbo run release:verify-installer --filter=@bb/desktop --concurrency=1
+corepack pnpm exec turbo run release:assets --filter=@bb/desktop --concurrency=1
 ```
 
-The uncached installer task builds the complete `bb-app` payload and desktop shell before packaging. Output is `apps/desktop/release/ARC-0.42.9-x64.exe`, alongside `win-unpacked/ARC IDE.exe` and its resources. Windows packaging uses `--publish never`. With signing credentials absent, local artifacts remain unsigned. Windows certificate configuration is handled by electron-builder without requiring Apple credentials; macOS signing and notarization validation applies only when macOS is targeted.
+The shared release gate requires clean committed source, then builds the complete `bb-app` payload and desktop shell into fresh output. Output is `apps/desktop/release/ARC-0.42.10-x64.exe`, alongside `win-unpacked/ARC IDE.exe` and its resources. Source and payload manifests bind the exact installer to its verification. Checksum and installation instructions finalize only after installed-payload verification passes. Windows packaging uses `--publish never`. With signing credentials absent, local artifacts remain unsigned. Windows certificate configuration is separate from macOS signing and notarization.
 
 Read development URLs and data paths from launcher output. Packaged ARC uses application ID `dev.arc.desktop`, profile `ARC`, data `~/.arc`, server port 38986 and host daemon port 38987. Development uses a checkout-specific directory below `~/.arc-dev` and deterministic development ports. Existing BB internal environment variables and workspace files remain compatible. Do not point `BB_DATA_DIR` at a WNDR data directory when verifying coexistence.
 
 Stable Windows builds use public GitHub Releases at grandmasterhilbertporcupine/ARC-IDE by default. ARC checks on launch, periodically and through Settings > Updates, downloads new stable releases in the background, and installs on restart or quit. No GitHub token is bundled or needed. At build time, an explicitly empty `ARC_UPDATE_BASE_URL` disables updating; a nonempty HTTPS override preserves the custom `/desktop-latest/` or `/desktop-nightly/` feed path. Default nightly, macOS and Linux builds have no published feed. Builds through 0.42.8 need a one-time manual install to enable GitHub updates.
 
-Build verification does not publish files. Use [the GitHub release procedure](arc-releases.md) to generate, verify and upload the installer and feeds together.
+Build verification does not publish files. Follow [release verification](arc-releases.md) to generate and verify the installer and feeds together. Source pushes, tags and public releases remain paused until renewed owner authorization.
 
 ## Acceptance
 

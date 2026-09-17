@@ -1,4 +1,5 @@
 export * from "./commands.js";
+export * from "./file-read-path-policy.js";
 export * from "./local-state.js";
 export * from "./local.js";
 export * from "./session.js";

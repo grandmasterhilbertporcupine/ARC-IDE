@@ -30,6 +30,13 @@ import { createAddressedContinuationService } from "./addressed-continuation.js"
 import { runtimeReceiptSchema } from "./receipt.js";
 import { runtimeHash } from "./hash.js";
 import { runtimeNodeKey } from "./compiler.js";
+import {
+  sealCompositionAuthorization,
+  validateCompositionAuthorization,
+} from "./composition-authorization.js";
+import type { OrchestratedRunDefinition } from "./orchestrated-contract.js";
+import type { AddressedComponent } from "./addressed-composition.js";
+import { teamTarget } from "../teams/testing.js";
 
 const runs: ReturnType<typeof createOrchestratedTestRun>[] = [];
 const hosts: FakePluginHost[] = [];
@@ -38,7 +45,33 @@ afterEach(async () => {
   for (const run of runs.splice(0)) run.db.close();
 });
 
-function fixture() {
+function authorize(definition: OrchestratedRunDefinition): AddressedComponent {
+  return {
+    revision: definition.team,
+    members: definition.members,
+    compositionAuthorization: sealCompositionAuthorization(
+      definition.request.projectId,
+      { team: definition.team, members: definition.members },
+      [
+        {
+          kind: "team",
+          scope: { kind: "project", projectId: definition.request.projectId },
+          entityId: definition.team.teamId,
+          revision: definition.team.revision,
+          contentHash: definition.team.contentHash,
+        },
+      ],
+    ),
+  };
+}
+
+function fixture(
+  options: {
+    restricted?: boolean;
+    next?: OrchestratedRunDefinition;
+    legacy?: boolean;
+  } = {},
+) {
   const definition = orchestratedDefinitionFixture();
   definition.request.expectedProjectPolicyVersion = 1;
   definition.request.addressedRecipients = [
@@ -49,15 +82,73 @@ function fixture() {
       scopeKey: `project:${definition.request.projectId}`,
     },
   ];
-  const run = createOrchestratedTestRun(definition);
+  const run = createOrchestratedTestRun(definition, (db) => {
+    db.exec(
+      [
+        ...addressedContinuationMigrations,
+        ...policyMigrations,
+        ...teamMigrations,
+      ].join(";\n"),
+    );
+    if (!options.restricted) return;
+    const agents = createAgentStore(db);
+    const teams = createTeamStore(db, agents);
+    const scope = {
+      kind: "project" as const,
+      projectId: definition.request.projectId,
+    };
+    for (const selected of [
+      definition,
+      ...(options.next ? [options.next] : []),
+    ]) {
+      for (const member of selected.team.definition.members) {
+        const snapshot = selected.members[member.id]!;
+        const created = agents.createAgent({
+          scope,
+          document: snapshot.definition.document,
+        });
+        const published = agents.publish({
+          scope,
+          agentId: created.id,
+          expectedDraftVersion: created.draft.version,
+        });
+        snapshot.definition = agents.getRevision({
+          scope,
+          agentId: published.id,
+          revision: 1,
+        });
+        member.agentId = published.id;
+        member.revision = 1;
+      }
+      const created = teams.createTeam({
+        scope,
+        definition: selected.team.definition,
+      });
+      const published = teams.publish(teamTarget(created));
+      selected.team = teams.getRevision({
+        scope,
+        teamId: published.id,
+        revision: 1,
+      });
+      selected.request.team = { teamId: published.id, revision: 1 };
+    }
+    definition.request.addressedRecipients = [
+      {
+        kind: "team",
+        entityId: definition.team.teamId,
+        versionId: 1,
+        scopeKey: `project:${definition.request.projectId}`,
+      },
+    ];
+    definition.policy.restrictedTeams = [
+      definition.request.team,
+      ...(options.next ? [options.next.request.team] : []),
+    ];
+    if (!options.legacy)
+      definition.compositionAuthorization =
+        authorize(definition).compositionAuthorization;
+  });
   runs.push(run);
-  run.db.exec(
-    [
-      ...addressedContinuationMigrations,
-      ...policyMigrations,
-      ...teamMigrations,
-    ].join(";\n"),
-  );
   const agents = createAgentStore(run.db);
   const policies = createPolicyStore(run.db);
   policies.saveProject({
@@ -364,47 +455,58 @@ describe("addressed follow-up admission", () => {
       expect(state.starts()).toBe(0);
     },
   );
-  it("resumes queued work after service restart from the verified candidate and keeps later Sends ordered", async () => {
-    const state = fixture();
-    const first = state.input();
-    const second = state.input();
-    const service = state.createService();
-    expect(
-      (await service.continue(first, state.definition.runId)).summary,
-    ).toContain("queued");
-    await service.continue(second, state.definition.runId);
-    expect(state.starts()).toBe(0);
-    await state.complete();
-    const consumed = state.run.view();
-    const restarted = state.createService();
-    restarted.start();
-    for (
-      let attempt = 0;
-      attempt < 6 &&
-      restarted.find(first.projectId, first.operationId)?.state !== "applied";
-      attempt++
-    )
-      await delay(450);
-    const admitted = restarted.find(first.projectId, first.operationId)!;
-    expect(admitted.state, admitted.error ?? undefined).toBe("applied");
-    expect(admitted.compiled?.definition.source.path).toBe(
-      state.candidate.path,
-    );
-    expect(admitted.compiled?.definition.request.path).toBe(
-      state.candidate.path,
-    );
-    const successor = state.run.store.get(admitted.successorRunId);
-    expect(
-      viewOwnedRun(state.run.db, successor.summary.workflowRunId!),
-    ).toMatchObject({
-      agentCalls: consumed.agentCalls,
-      chargedActiveMs: consumed.chargedActiveMs,
-    });
-    expect(restarted.find(second.projectId, second.operationId)?.state).toBe(
-      "queued",
-    );
-    expect(state.starts()).toBe(1);
-  });
+  it.each([false, true])(
+    "resumes queued work after service restart from the verified candidate and keeps later Sends ordered (restricted %s)",
+    async (restricted) => {
+      const state = fixture({ restricted });
+      const first = state.input();
+      const second = state.input();
+      const service = state.createService();
+      expect(
+        (await service.continue(first, state.definition.runId)).summary,
+      ).toContain("queued");
+      await service.continue(second, state.definition.runId);
+      expect(state.starts()).toBe(0);
+      await state.complete();
+      const consumed = state.run.view();
+      const restarted = state.createService();
+      restarted.start();
+      for (
+        let attempt = 0;
+        attempt < 6 &&
+        restarted.find(first.projectId, first.operationId)?.state !== "applied";
+        attempt++
+      )
+        await delay(450);
+      const admitted = restarted.find(first.projectId, first.operationId)!;
+      expect(admitted.state, admitted.error ?? undefined).toBe("applied");
+      expect(admitted.compiled?.definition.source.path).toBe(
+        state.candidate.path,
+      );
+      expect(admitted.compiled?.definition.request.path).toBe(
+        state.candidate.path,
+      );
+      const successor = state.run.store.get(admitted.successorRunId);
+      if (successor.compiled.definition.schemaVersion !== 3)
+        throw new Error("Expected orchestrated follow-up");
+      expect(successor.compiled.definition.compositionAuthorization).toEqual(
+        state.definition.compositionAuthorization,
+      );
+      expect(successor.compiled.definition.policy).toEqual(
+        state.definition.policy,
+      );
+      expect(
+        viewOwnedRun(state.run.db, successor.summary.workflowRunId!),
+      ).toMatchObject({
+        agentCalls: consumed.agentCalls,
+        chargedActiveMs: consumed.chargedActiveMs,
+      });
+      expect(restarted.find(second.projectId, second.operationId)?.state).toBe(
+        "queued",
+      );
+      expect(state.starts()).toBe(1);
+    },
+  );
 
   it("reconciles a lost successor acknowledgement without admitting a fresh run", async () => {
     const state = fixture();
@@ -442,17 +544,126 @@ describe("addressed follow-up admission", () => {
     ).toBeNull();
   });
 
-  it("admits changed recipients from a pinned snapshot while retaining earlier checks and cumulative usage", async () => {
-    const state = fixture();
-    await state.complete();
-    const next = orchestratedDefinitionFixture((team) => {
-      team.name = "New addressed team";
-      for (const node of team.graph.nodes) {
-        if (node.kind === "agent")
-          node.task = "Implement the next assignment on the retained candidate";
-        if (node.kind === "check") node.command.args = ["--test", "new-team"];
+  it.each([false, true])(
+    "admits changed recipients from a pinned snapshot while retaining earlier checks and cumulative usage (restricted %s)",
+    async (restricted) => {
+      const next = orchestratedDefinitionFixture((team) => {
+        team.name = "New addressed team";
+        for (const node of team.graph.nodes) {
+          if (node.kind === "agent")
+            node.task =
+              "Implement the next assignment on the retained candidate";
+          if (node.kind === "check") node.command.args = ["--test", "new-team"];
+        }
+      });
+      const state = fixture({ restricted, next });
+      await state.complete();
+      const input = state.input();
+      input.recipients = [
+        {
+          kind: "team",
+          entityId: next.team.teamId,
+          versionId: next.team.revision,
+          scopeKey: `project:${input.projectId}`,
+        },
+      ];
+      const service = state.createService();
+      const composition = restricted
+        ? authorize(next)
+        : { revision: next.team, members: next.members };
+      const result = await service.continue(
+        input,
+        state.definition.runId,
+        composition,
+      );
+      const saved = service.find(input.projectId, input.operationId)!;
+      expect(result.summary, saved.error ?? undefined).toContain(
+        "Continued from the verified candidate",
+      );
+      expect(saved.state).toBe("applied");
+      expect(saved.composition?.revision.teamId).toBe(next.team.teamId);
+      expect(saved.compiled?.definition.source.path).toBe(state.candidate.path);
+      const successor = state.run.store.get(saved.successorRunId);
+      if (successor.compiled.definition.schemaVersion !== 3)
+        throw new Error("Expected orchestrated follow-up");
+      expect(successor.compiled.definition.policy).toEqual(
+        state.definition.policy,
+      );
+      if (restricted) {
+        const definition = successor.compiled.definition;
+        const authorization = definition.compositionAuthorization!;
+        expect(
+          authorization.origins.map((origin) => origin.entityId).sort(),
+        ).toEqual([state.definition.team.teamId, next.team.teamId].sort());
+        expect(authorization.bindingHash).not.toBe(
+          composition.compositionAuthorization?.bindingHash,
+        );
+        expect(() =>
+          validateCompositionAuthorization(
+            input.projectId,
+            { team: definition.team, members: definition.members },
+            authorization,
+          ),
+        ).not.toThrow();
       }
-    });
+      expect(
+        successor.compiled.definition.team.definition.graph.requiredGates.some(
+          (gate) => gate.id.startsWith("prior-check"),
+        ),
+      ).toBe(true);
+      expect(
+        viewOwnedRun(state.run.db, successor.summary.workflowRunId!).agentCalls,
+      ).toBe(state.run.view().agentCalls);
+      next.team.definition.name = "Changed after Send";
+      expect(
+        service.find(input.projectId, input.operationId)?.composition?.revision
+          .definition.name,
+      ).toBe("New addressed team");
+    },
+  );
+
+  it.each(["project", "member", "origin"] as const)(
+    "blocks a tampered queued %s snapshot after restart before admitting a provider",
+    async (change) => {
+      const state = fixture({ restricted: true });
+      await state.complete();
+      state.failStart();
+      const input = state.input();
+      const service = state.createService();
+      await service.continue(input, state.definition.runId);
+      const saved = service.find(input.projectId, input.operationId)!;
+      const compiled = saved.compiled!;
+      if (compiled.definition.schemaVersion !== 3)
+        throw new Error("Expected orchestrated follow-up");
+      if (change === "project")
+        compiled.definition.compositionAuthorization!.projectId =
+          "different-project";
+      if (change === "member")
+        compiled.definition.members.builder.execution.model = "different-model";
+      if (change === "origin")
+        compiled.definition.compositionAuthorization!.origins[0]!.contentHash =
+          "f".repeat(64);
+      state.run.db
+        .prepare(
+          "UPDATE arc_addressed_continuations SET compiled_json = ? WHERE project_id = ? AND operation_id = ?",
+        )
+        .run(JSON.stringify(compiled), input.projectId, input.operationId);
+      state.allowStart();
+      const restarted = state.createService();
+      const retried = await restarted.handlers().retryAddressedFollowup({
+        ...input,
+        expectedUpdatedAt: saved.updatedAt,
+      });
+      expect(retried.state).toBe("action-required");
+      expect(retried.error).toContain("does not match this project");
+      expect(state.starts()).toBe(0);
+    },
+  );
+
+  it("rejects a changed recipient outside the retained allowlist without losing the earlier result", async () => {
+    const state = fixture({ restricted: true });
+    await state.complete();
+    const next = orchestratedDefinitionFixture();
     const input = state.input();
     input.recipients = [
       {
@@ -462,33 +673,78 @@ describe("addressed follow-up admission", () => {
         scopeKey: `project:${input.projectId}`,
       },
     ];
+    const before = state.run.store.get(state.definition.runId);
     const service = state.createService();
-    const result = await service.continue(input, state.definition.runId, {
-      revision: next.team,
-      members: next.members,
-    });
+    await service.continue(input, state.definition.runId, authorize(next));
     const saved = service.find(input.projectId, input.operationId)!;
-    expect(result.summary, saved.error ?? undefined).toContain(
-      "Continued from the verified candidate",
+    expect(saved.state).toBe("action-required");
+    expect(saved.error).toContain("outside the resolved session restriction");
+    expect(state.run.store.get(state.definition.runId)).toEqual(before);
+    expect(state.starts()).toBe(0);
+  });
+
+  it.each([false, true])(
+    "does not manufacture origin authority for a legacy predecessor when recipients change (restricted %s)",
+    async (restricted) => {
+      const next = orchestratedDefinitionFixture((team) => {
+        team.name = "New recipient for legacy work";
+        const check = team.graph.nodes.find((node) => node.kind === "check");
+        if (!check || check.kind !== "check")
+          throw new Error("Expected required check");
+        check.command.args = ["--test", "legacy-followup"];
+      });
+      const state = fixture({ restricted, next, legacy: true });
+      await state.complete();
+      const before = state.run.store.get(state.definition.runId);
+      expect(before.compiled.definition).not.toHaveProperty(
+        "compositionAuthorization",
+      );
+      const input = state.input();
+      input.recipients = [
+        {
+          kind: "team",
+          entityId: next.team.teamId,
+          versionId: next.team.revision,
+          scopeKey: `project:${input.projectId}`,
+        },
+      ];
+      const service = state.createService();
+      await service.continue(input, state.definition.runId, authorize(next));
+      const saved = service.find(input.projectId, input.operationId)!;
+      if (restricted) {
+        expect(state.definition.policy.restrictedTeams).toEqual([
+          state.definition.request.team,
+          next.request.team,
+        ]);
+        expect(saved.state).toBe("action-required");
+        expect(saved.error).toContain(
+          "requires resolved origin records for both compositions",
+        );
+        expect(saved.compiled).toBeNull();
+        expect(state.starts()).toBe(0);
+      } else {
+        expect(saved.state, saved.error ?? undefined).toBe("applied");
+        expect(saved.compiled!.definition).not.toHaveProperty(
+          "compositionAuthorization",
+        );
+        expect(state.starts()).toBe(1);
+      }
+      expect(state.run.store.get(state.definition.runId)).toEqual(before);
+    },
+  );
+
+  it("keeps an allowed legacy team's unchanged recipients without inventing authorization", async () => {
+    const state = fixture({ restricted: true, legacy: true });
+    await state.complete();
+    const input = state.input();
+    const service = state.createService();
+    await service.continue(input, state.definition.runId);
+    const saved = service.find(input.projectId, input.operationId)!;
+    expect(saved.state, saved.error ?? undefined).toBe("applied");
+    expect(saved.compiled!.definition).not.toHaveProperty(
+      "compositionAuthorization",
     );
-    expect(saved.state).toBe("applied");
-    expect(saved.composition?.revision.teamId).toBe(next.team.teamId);
-    expect(saved.compiled?.definition.source.path).toBe(state.candidate.path);
-    const successor = state.run.store.get(saved.successorRunId);
-    if (successor.compiled.definition.schemaVersion !== 3)
-      throw new Error("Expected orchestrated follow-up");
-    expect(
-      successor.compiled.definition.team.definition.graph.requiredGates.some(
-        (gate) => gate.id.startsWith("prior-check"),
-      ),
-    ).toBe(true);
-    expect(
-      viewOwnedRun(state.run.db, successor.summary.workflowRunId!).agentCalls,
-    ).toBe(state.run.view().agentCalls);
-    next.team.definition.name = "Changed after Send";
-    expect(
-      service.find(input.projectId, input.operationId)?.composition?.revision
-        .definition.name,
-    ).toBe("New addressed team");
+    expect(saved.compiled!.definition.policy).toEqual(state.definition.policy);
+    expect(state.starts()).toBe(1);
   });
 });
