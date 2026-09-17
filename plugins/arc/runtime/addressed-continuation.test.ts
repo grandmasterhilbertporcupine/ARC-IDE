@@ -741,10 +741,11 @@ describe("addressed follow-up admission", () => {
     await service.continue(input, state.definition.runId);
     const saved = service.find(input.projectId, input.operationId)!;
     expect(saved.state, saved.error ?? undefined).toBe("applied");
-    expect(saved.compiled!.definition).not.toHaveProperty(
-      "compositionAuthorization",
-    );
-    expect(saved.compiled!.definition.policy).toEqual(state.definition.policy);
+    const definition = saved.compiled!.definition;
+    if (definition.schemaVersion !== 3)
+      throw new Error("Expected orchestrated follow-up");
+    expect(definition).not.toHaveProperty("compositionAuthorization");
+    expect(definition.policy).toEqual(state.definition.policy);
     expect(state.starts()).toBe(1);
   });
 });
