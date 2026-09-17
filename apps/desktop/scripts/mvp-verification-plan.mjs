@@ -67,6 +67,7 @@ export const sourceVerificationPlan = [
       "src/components/secondary-panel/NativeHtmlPreview.test.tsx",
       "src/components/secondary-panel/FilePreview.test.tsx",
       "src/components/settings/UpdatesSettingsSection.test.tsx",
+      "src/components/settings/changelog-preview.test.ts",
     ],
   ),
   task("native-processes", "test", ["@bb/domain", "@bb/process-utils"]),

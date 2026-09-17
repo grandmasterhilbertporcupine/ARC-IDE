@@ -1,14 +1,18 @@
 # ARC changelog
 
-## 0.42.10 — local personal build
+## 0.42.10
 
-Public download and publishing remain pending.
+Local personal build. Public download and publishing remain pending.
+
+### Improvements
 
 - Build and customize visual agent teams with names, colors, model icons/selectors and assigned skills.
 - Keep HTML, SVG and XML file previews isolated from ARC APIs while supporting relative scripts, modules, data and other permitted assets.
 - Refresh visible Preview status after external SDK/CLI operations and reconnections.
 - Authorize addressed team compositions from their exact stored revisions without broadening project permissions.
 - Require serial source and packaged verification, then compare actual installed files with a frozen payload manifest before finalizing installer assets.
+
+### Verification
 
 This build is unsigned. Consult its accompanying evidence for observed checks and remaining gates; local installation verification does not certify clean-machine operation or cross-version upgrades.
 
